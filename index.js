@@ -23,7 +23,7 @@ console.log("NODE_ENV", process.env.NODE_ENV)
 const backendURL =
   process.env.NODE_ENV === "development"
     ? "http://localhost:3000" 
-    : "https://edusign-backend-375617093037.us-central1.run.app";
+    : "https://backend-375617093037.us-central1.run.app";
 
 console.log(`Backend URL: ${backendURL}`);
 // Middleware
