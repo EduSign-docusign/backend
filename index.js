@@ -7,7 +7,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 8080;
 
 // Initialize Firebase Admin
 const { initializeApp, cert } = require("firebase-admin/app");
@@ -22,7 +22,7 @@ console.log("NODE_ENV", process.env.NODE_ENV)
 
 const backendURL =
   process.env.NODE_ENV === "development"
-    ? "http://localhost:3000" 
+    ? `http://localhost:${port}` 
     : "https://backend-375617093037.us-central1.run.app";
 
 console.log(`Backend URL: ${backendURL}`);
@@ -463,5 +463,5 @@ function makeRecipientViewRequest(parentName) {
 
 // Start server
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Server running at ${backendURL}:${port}`);
 });
