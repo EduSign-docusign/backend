@@ -367,7 +367,15 @@ async function getUserInfo(accessToken) {
 
 
 app.get('/api/createDocusignEnvelope', async (req, res) => {
-  const TOKEN = "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2Iiwia2lkIjoiNjgxODVmZjEtNGU1MS00Y2U5LWFmMWMtNjg5ODEyMjAzMzE3In0.AQsAAAABAAUABwAAoqDkRyjdSAgAAOLD8ooo3UgCAFOskxGdX7tAllGPBj-g1gMVAAEAAAAYAAEAAAAFAAAADQAkAAAAM2U5ODFjYmMtNmJjYS00YzI1LTk0NTMtMGM5MjdlY2RmYjg0IgAkAAAAM2U5ODFjYmMtNmJjYS00YzI1LTk0NTMtMGM5MjdlY2RmYjg0EgABAAAACwAAAGludGVyYWN0aXZlMACACwjkRyjdSDcAn4SD4mZiLUGGzh2rHNCINA.cAWWoVvhXjH3KxiNOui6qymxpB-_gbsCHnXKITe5rQINHQnocz7_BLvRmRO2HuXwX7e_g5JfaQvlRu2s-2ZU5-94zIPZUvC0xUUckTyKxOHz69cXu4CrjqT2_fy6LFLkEsTcBFJZ2mGzdQhXJa0dXZwP9tRaAjRkAUIbZdKHbvB5JQBA7-7iTU9sNNyHFqNeLH4bTtOH9J_i-g6scbo6HOxr5OXBfpNvJeKm-et-jI5fgH50nB7_JKfI_-epqDWxEba9XNPchZmfC36epmI91agcmqRbZA67Nfc7PM1lXdAvXlTCuQv_UT4_BzK8HA8IB8Hlc1J7d7hmSlXWXqqxEA"
+  const { document_id } = req.query;
+  const db = getFirestore();
+
+  const firestore_document = await db.collection("documents").doc(document_id).get()
+  const teacher_id = firestore_document.data().teacher_id
+
+  const teacher_document = await db.collection("teachers").doc(teacher_id).get()
+  const access_token = teacher_document.data().docusign_auth_token
+
   const accountInfo = await getUserInfo(TOKEN)
   const baseUri = accountInfo.baseUri
   const accountId = accountInfo.accountId
