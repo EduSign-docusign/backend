@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduSign - Permission Slip Management</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+    />
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@motionone/dom@10.16.2/dist/motion-one.min.js"></script>
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Login Section -->
+      <section id="loginSection" class="section login-section">
+        <div class="login-container">
+          <div class="login-header">
+            <h1>EduSign</h1>
+            <p>Permission Slip Management</p>
+          </div>
+
+          <div class="auth-toggle">
+            <button id="loginToggle" class="auth-toggle-btn active">
+              Login
+            </button>
+            <button id="signupToggle" class="auth-toggle-btn">Sign Up</button>
+          </div>
+
+          <form id="loginForm" class="login-form">
+            <div class="input-group login-field">
+              <input type="email" id="email" required />
+              <label for="email">Email</label>
+              <div class="input-highlight"></div>
+            </div>
+
+            <div class="input-group login-field">
+              <input type="password" id="password" required />
+              <label for="password">Password</label>
+              <div class="input-highlight"></div>
+            </div>
+
+            <button type="submit" class="login-button">
+              <span>Login</span>
+              <div class="button-loader"></div>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Dashboard Section -->
+      <section id="dashboardSection" class="section dashboard-section hidden">
+        <nav class="dashboard-nav">
+          <div class="nav-left">
+            <h2>Welcome, <span id="teacherName"></span></h2>
+          </div>
+          <div class="nav-right">
+            <button id="canvasAuthBtn" class="nav-button">
+              <svg class="button-icon canvas-icon" viewBox="0 0 24 24">
+                <path
+                  d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                />
+              </svg>
+              Connect Canvas
+            </button>
+            <button id="docusignAuth" class="nav-button">
+              <svg class="button-icon docusign-icon" viewBox="0 0 24 24">
+                <path
+                  d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                />
+              </svg>
+              Connect DocuSign
+            </button>
+            <div class="nav-right">
+              <button id="refreshCoursesBtn" class="nav-button">
+                <svg class="button-icon" viewBox="0 0 24 24">
+                  <path
+                    d="M4 4V9H4.58L5.39 7.44C7.31 4.03 11.25 2.2 15 3.1C18.75 4 21.58 7.2 22 11.12M20 20V15H19.42L18.61 16.56C16.69 19.97 12.75 21.8 9 20.9C5.25 20 2.42 16.8 2 12.88"
+                  />
+                </svg>
+                Refresh Courses
+              </button>
+              <!-- Your existing buttons -->
+            </div>
+            <button id="logout" class="nav-button logout-button">
+              <svg class="button-icon logout-icon" viewBox="0 0 24 24">
+                <path
+                  d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
+                />
+              </svg>
+              Logout
+            </button>
+          </div>
+        </nav>
+
+        <div class="dashboard-content">
+          <div class="courses-grid" id="coursesList">
+            <!-- Courses will be dynamically added here -->
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Canvas Token Modal -->
+    <div id="canvasTokenModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Connect to Canvas</h3>
+        <form id="canvasTokenForm">
+          <div class="input-group token-input">
+            <label for="canvasToken">Canvas API Token</label>
+            <input
+              type="text"
+              id="canvasToken"
+              class="token-field"
+              placeholder="Paste your Canvas token here"
+              required
+            />
+          </div>
+
+          <div class="helper-text">
+            <p>To get your Canvas token:</p>
+            <ol>
+              <li>
+                Go to
+                <a
+                  href="https://lgsuhsd.instructure.com/profile/settings"
+                  target="_blank"
+                  rel="noopener"
+                  >Canvas Settings</a
+                >
+              </li>
+              <li>Scroll down to 'Approved Integrations'</li>
+              <li>Click '+ New Access Token'</li>
+              <li>Enter 'EduSign' as Purpose</li>
+              <li>Set Expiration date (e.g., end of school year)</li>
+              <li>Click 'Generate Token'</li>
+              <li>Copy the generated token and paste it above</li>
+            </ol>
+          </div>
+
+          <div class="modal-buttons">
+            <button
+              type="button"
+              class="secondary-button"
+              id="cancelCanvasToken"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="primary-button">
+              <span>Connect Canvas</span>
+              <div class="button-loader hidden"></div>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="notificationContainer" class="notification-container"></div>
+
+    <script></script>
+    <!-- Add this before closing </body> tag -->
+    <script src="animations.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
