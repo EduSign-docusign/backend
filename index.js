@@ -4,32 +4,10 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
-require("dotenv").config();
-
-const app = express();
-const port = 3000;
-
-// Initialize Firebase Admin
-const { initializeApp, cert } = require("firebase-admin/app");
-const firebaseKey = require("./firebase-key.json");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore"); // Add FieldValue import
-
-initializeApp({
-  credential: cert(firebaseKey),
-});
-
-console.log("NODE_ENV", process.env.NODE_ENV)
-
 const backendURL =
   process.env.NODE_ENV === "development"
-    ? "http://localhost:3000" 
+    ? "http://localhost:3000"
     : "https://backend-375617093037.us-central1.run.app";
-
-console.log(`Backend URL: ${backendURL}`);
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static("public")); // Serve static files from 'public' directory
 
 const CONFIG = {
   clientId: "3e981cbc-6bca-4c25-9453-0c927ecdfb84",
@@ -38,16 +16,43 @@ const CONFIG = {
   clientSecret: "85db939f-5b56-4207-9921-ad3ebee5b587",
   authRedirectUri: `${backendURL}/api/save-teacher-token`,
   authServer: "https://account-d.docusign.com",
+  storageBucket: "edusign-d5abd.firebasestorage.app",
 };
+require("dotenv").config();
+const multer = require("multer");
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+});
+const app = express();
+const port = 3000;
+
+// Initialize Firebase Admin
+const { initializeApp, cert } = require("firebase-admin/app");
+const firebaseKey = require("./firebase-key.json");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore"); // Add FieldValue import
+
+const { getStorage } = require("firebase-admin/storage");
+
+initializeApp({
+  credential: cert(firebaseKey),
+  storageBucket: CONFIG.storageBucket,
+});
+
+console.log("NODE_ENV", process.env.NODE_ENV);
+
+console.log(`Backend URL: ${backendURL}`);
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static("public")); // Serve static files from 'public' directory
 
 // Serve the main HTML file
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
-
-
-
-
 
 // Canvas API Proxy
 app.get("/api/canvas/courses", async (req, res) => {
@@ -70,7 +75,6 @@ app.get("/api/canvas/courses", async (req, res) => {
     });
   }
 });
-
 
 // Update the server endpoint (server.js)
 app.post("/api/canvas/save-token", async (req, res) => {
@@ -198,22 +202,134 @@ app.post("/api/canvas/save-token", async (req, res) => {
     });
   }
 });
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file provided" });
+    }
 
+    const { courseId, courseName, teacherId } = req.body;
+    const file = req.file;
 
+    // Get Firebase Storage bucket
+    const bucket = getStorage().bucket();
 
+    // Create a unique filename
+    const timestamp = Date.now();
+    const filename = `permission_slips/${teacherId}/${courseId}/${timestamp}_${file.originalname}`;
 
+    // Create a new blob in the bucket
+    const blob = bucket.file(filename);
+    const blobStream = blob.createWriteStream({
+      metadata: {
+        contentType: file.mimetype,
+      },
+    });
 
+    // Handle errors
+    blobStream.on("error", (error) => {
+      console.error("Upload error:", error);
+      res.status(500).json({ error: "Failed to upload file" });
+    });
 
+    // Handle success
+    blobStream.on("finish", async () => {
+      // Make the file public and get URL
+      await blob.makePublic();
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
 
+      // Save document reference in Firestore
+      const db = getFirestore();
+      const docRef = await db.collection("documents").add({
+        course_id: courseId,
+        course_name: courseName,
+        file_url: publicUrl,
+        teacher_id: teacherId,
+        file_name: file.originalname,
+        uploaded_at: FieldValue.serverTimestamp(),
+        status: "uploaded",
+      });
+
+      res.status(200).json({
+        success: true,
+        documentId: docRef.id,
+        fileUrl: publicUrl,
+      });
+    });
+
+    // Write the file to Storage
+    blobStream.end(file.buffer);
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({
+      error: "Failed to process file upload",
+      details: error.message,
+    });
+  }
+});
+// Delete file endpoint
+app.delete("/api/files/:fileId", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const { teacherId } = req.body;
+
+    // Get the file document
+    const db = getFirestore();
+    const fileDoc = await db.collection("documents").doc(fileId).get();
+
+    if (!fileDoc.exists) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const fileData = fileDoc.data();
+    console.log("File data:", fileData); // Debug log
+
+    // Verify teacher ownership
+    if (fileData.teacher_id !== teacherId) {
+      return res
+        .status(403)
+        .json({ error: "Unauthorized to delete this file" });
+    }
+
+    // Get the file path from the original upload path
+    const filePath = `permission_slips/${fileData.teacher_id}/${fileData.course_id}/${fileData.file_name}`;
+    console.log("Attempting to delete file at path:", filePath); // Debug log
+
+    // Get storage bucket and delete file
+    const bucket = getStorage().bucket(CONFIG.storageBucket);
+    await bucket
+      .file(filePath)
+      .delete()
+      .catch((error) => {
+        console.log("Storage delete error (non-fatal):", error);
+        // Continue even if storage delete fails
+      });
+
+    // Delete the Firestore document
+    await db.collection("documents").doc(fileId).delete();
+
+    res.status(200).json({ message: "File deleted successfully" });
+  } catch (error) {
+    console.error("Delete file error:", error);
+    res.status(500).json({
+      error: "Failed to delete file",
+      details: error.message,
+    });
+  }
+});
 //Docusign
-app.get('/api/teacher-auth', (req, res) => {
-  const { teacher_id } = req.query
+app.get("/api/teacher-auth", (req, res) => {
+  const { teacher_id } = req.query;
 
   if (!teacher_id) {
-    res.status(400).json({ error: "No teacher_id provided. Must be the ID of a document in the teachers Firestore collection"})
+    res.status(400).json({
+      error:
+        "No teacher_id provided. Must be the ID of a document in the teachers Firestore collection",
+    });
   }
-  
-  const authUrl = `${CONFIG.authServer}/oauth/auth?response_type=code&` +
+
+  const authUrl =
+    `${CONFIG.authServer}/oauth/auth?response_type=code&` +
     `scope=signature&` +
     `client_id=${CONFIG.clientId}&` +
     `redirect_uri=${encodeURIComponent(CONFIG.authRedirectUri)}&` +
@@ -221,182 +337,205 @@ app.get('/api/teacher-auth', (req, res) => {
   res.redirect(authUrl);
 });
 
-
 //this is internal, redirected from api/teacher-auth DO NOT CALL EXTERNALLY
-app.get('/api/save-teacher-token', async(req, res) => {
-      const { code, state } = req.query;
-      console.log("Loaded state:", JSON.stringify(state))
-      const { teacher_id } = JSON.parse(decodeURIComponent(state));
+app.get("/api/save-teacher-token", async (req, res) => {
+  const { code, state } = req.query;
+  console.log("Loaded state:", JSON.stringify(state));
+  const { teacher_id } = JSON.parse(decodeURIComponent(state));
 
-      const tokenResponse = await getDocusignToken(code)
- 
-      console.log("Got token:", JSON.stringify(tokenResponse))
-      
-      const db =  getFirestore()
+  const tokenResponse = await getDocusignToken(code);
 
-      await db.collection("teachers").doc(teacher_id).update({
-        docusign_auth_token: tokenResponse.access_token,
-        docusign_refresh_token: tokenResponse.refresh_token
-      })
+  console.log("Got token:", JSON.stringify(tokenResponse));
 
-      res.json("Succesfully saved token. You may return to EduSign")
-})
+  const db = getFirestore();
 
-const getDocusignToken = async(code) => {
-    const tokenResponse = await axios.post(`${CONFIG.authServer}/oauth/token`, {
-      grant_type: 'authorization_code',
+  await db.collection("teachers").doc(teacher_id).update({
+    docusign_auth_token: tokenResponse.access_token,
+    docusign_refresh_token: tokenResponse.refresh_token,
+  });
+
+  res.json("Succesfully saved token. You may return to EduSign");
+});
+
+const getDocusignToken = async (code) => {
+  const tokenResponse = await axios.post(
+    `${CONFIG.authServer}/oauth/token`,
+    {
+      grant_type: "authorization_code",
       code,
       redirect_uri: CONFIG.redirectUri,
-    }, {
+    },
+    {
       auth: {
         username: CONFIG.clientId,
         password: CONFIG.clientSecret,
       },
-  });
+    }
+  );
 
-    return tokenResponse.data
+  return tokenResponse.data;
 };
 
 const refreshDocusignToken = async (refresh_token) => {
   try {
-    const response = await axios.post(`${CONFIG.authServer}/oauth/token`, {
-      grant_type: "refresh_token",
-      refresh_token: refresh_token,
-    }, {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": `Basic ${Buffer.from(`${CONFIG.clientId}:${CONFIG.clientSecret}`).toString("base64")}`,
+    const response = await axios.post(
+      `${CONFIG.authServer}/oauth/token`,
+      {
+        grant_type: "refresh_token",
+        refresh_token: refresh_token,
       },
-    });
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${Buffer.from(
+            `${CONFIG.clientId}:${CONFIG.clientSecret}`
+          ).toString("base64")}`,
+        },
+      }
+    );
 
     return response.data.access_token;
   } catch (err) {
-    console.error("Failed to refresh DocuSign token:", err.response?.data || err.message);
+    console.error(
+      "Failed to refresh DocuSign token:",
+      err.response?.data || err.message
+    );
     throw new Error("Failed to refresh DocuSign token");
   }
 };
 
-app.get('/api/getDocURL', async (req, res) => {
+app.get("/api/getDocURL", async (req, res) => {
   const { document_id } = req.query;
-  
+
   try {
-    const db = getFirestore()
-    
-    const document = await db.collection("documents").doc(document_id).get()
+    const db = getFirestore();
+
+    const document = await db.collection("documents").doc(document_id).get();
     if (!document.exists) {
-      throw ({ status: 404, message: "Document not found" });
+      throw { status: 404, message: "Document not found" };
     }
-    const document_data = document.data()
+    const document_data = document.data();
 
-    const teacher = await db.collection("teachers").doc(document_data.teacher_id).get()
+    const teacher = await db
+      .collection("teachers")
+      .doc(document_data.teacher_id)
+      .get();
     if (!teacher.exists) {
-      throw ({ status: 404, message: "Teacher not found" });
+      throw { status: 404, message: "Teacher not found" };
     }
-    const teacher_data = teacher.data()
+    const teacher_data = teacher.data();
     if (!teacher_data.docusign_auth_token) {
-      throw new Error("No auth token present. Could not send document because teacher has not granted permission. This is a bug. 30-day permission should have been granted when document was sent.")
+      throw new Error(
+        "No auth token present. Could not send document because teacher has not granted permission. This is a bug. 30-day permission should have been granted when document was sent."
+      );
     }
 
-    let access_token = teacher_data.docusign_auth_token
-
+    let access_token = teacher_data.docusign_auth_token;
 
     let accountInfo;
 
     try {
-        accountInfo = await getUserInfo(access_token)
-        
-    } catch(error) {
-        if (error.status === 401 ) {
-          if (!teacher_data.docusign_refresh_token) {
-            throw new Error("No refresh token present. Could not send document because teacher has not granted permission. This is a bug. 30-day permission should have been granted when document was sent.")
-          }
-
-          console.log("Access token expired. Attempting to refresh token...");
-
-          access_token = await refreshDocusignToken(teacher_data.docusign_refresh_token);
-
-          await db.collection("teachers").doc(document_data.teacher_id).update({
-            docusign_auth_token: access_token,
-          });
-
-          accountInfo = await getUserInfo(access_token);
-
+      accountInfo = await getUserInfo(access_token);
+    } catch (error) {
+      if (error.status === 401) {
+        if (!teacher_data.docusign_refresh_token) {
+          throw new Error(
+            "No refresh token present. Could not send document because teacher has not granted permission. This is a bug. 30-day permission should have been granted when document was sent."
+          );
         }
-    } 
 
+        console.log("Access token expired. Attempting to refresh token...");
 
-    console.log("Account Info:", accountInfo)
+        access_token = await refreshDocusignToken(
+          teacher_data.docusign_refresh_token
+        );
 
-    const results = await getSigningURL(accountInfo.baseUri, accountInfo.accountId, access_token, "Parent 1");
-    res.json( results.redirectUrl );  
-  
-   
+        await db.collection("teachers").doc(document_data.teacher_id).update({
+          docusign_auth_token: access_token,
+        });
+
+        accountInfo = await getUserInfo(access_token);
+      }
+    }
+
+    console.log("Account Info:", accountInfo);
+
+    const results = await getSigningURL(
+      accountInfo.baseUri,
+      accountInfo.accountId,
+      access_token,
+      "Parent 1"
+    );
+    res.json(results.redirectUrl);
   } catch (error) {
     console.error(JSON.stringify(error));
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get signing URL', status: error.status || 500 });
+    res.status(error.status || 500).json({
+      error: error.message || "Failed to get signing URL",
+      status: error.status || 500,
+    });
   }
 });
 
 async function getUserInfo(accessToken) {
-    const userInfoUrl = 'https://account-d.docusign.com/oauth/userinfo';
-    console.log("Getting Base URI With Token", accessToken)
+  const userInfoUrl = "https://account-d.docusign.com/oauth/userinfo";
+  console.log("Getting Base URI With Token", accessToken);
 
-    const response = await axios.get(userInfoUrl, {
-        headers: {
-            'Authorization': `Bearer ${accessToken}`
-        }
-    });
+  const response = await axios.get(userInfoUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 
-    // Log the full response for debugging
-    console.log('UserInfo Response:', response.data);
+  // Log the full response for debugging
+  console.log("UserInfo Response:", response.data);
 
-    // Get the default account from the accounts array
-    const defaultAccount = response.data.accounts.find(acc => acc.is_default) || response.data.accounts[0];
+  // Get the default account from the accounts array
+  const defaultAccount =
+    response.data.accounts.find((acc) => acc.is_default) ||
+    response.data.accounts[0];
 
-    if (!defaultAccount) {
-        throw new Error('No account found in the userinfo response');
-    }
+  if (!defaultAccount) {
+    throw new Error("No account found in the userinfo response");
+  }
 
-    return {
-        baseUri: defaultAccount.base_uri,
-        accountId: defaultAccount.account_id
-    };
+  return {
+    baseUri: defaultAccount.base_uri,
+    accountId: defaultAccount.account_id,
+  };
 }
-
-
 
 async function getSigningURL(baseUri, accountId, accessToken, parentName) {
   const apiClient = new docusign.ApiClient();
-  apiClient.setBasePath(baseUri + '/restapi');
-  apiClient.addDefaultHeader('Authorization', `Bearer ${accessToken}`);
+  apiClient.setBasePath(baseUri + "/restapi");
+  apiClient.addDefaultHeader("Authorization", `Bearer ${accessToken}`);
 
   const envelopesApi = new docusign.EnvelopesApi(apiClient);
 
   const envelopeDefinition = new docusign.EnvelopeDefinition();
-  envelopeDefinition.emailSubject = 'Please sign this document';
+  envelopeDefinition.emailSubject = "Please sign this document";
 
   // Add a document to the envelope
-  const documentBytes = fs.readFileSync(path.resolve('./test.pdf'));
-  const documentBase64 = documentBytes.toString('base64');
+  const documentBytes = fs.readFileSync(path.resolve("./test.pdf"));
+  const documentBase64 = documentBytes.toString("base64");
 
   const document = new docusign.Document();
   document.documentBase64 = documentBase64;
-  document.name = 'Sample Document'; 
-  document.fileExtension = 'pdf'; 
-  document.documentId = '1'; 
+  document.name = "Sample Document";
+  document.fileExtension = "pdf";
+  document.documentId = "1";
   envelopeDefinition.documents = [document];
 
   const signer = new docusign.Signer();
-  signer.email = CONFIG.clientEmail 
-  signer.name = parentName; 
-  signer.recipientId = '1';
-  signer.clientUserId = CONFIG.clientUserId
+  signer.email = CONFIG.clientEmail;
+  signer.name = parentName;
+  signer.recipientId = "1";
+  signer.clientUserId = CONFIG.clientUserId;
 
   const signHere = new docusign.SignHere();
-  signHere.anchorString = '**signature_1**'; 
-  signHere.anchorUnits = 'pixels';
-  signHere.anchorXOffset = '20';
-  signHere.anchorYOffset = '10';
+  signHere.anchorString = "**signature_1**";
+  signHere.anchorUnits = "pixels";
+  signHere.anchorXOffset = "20";
+  signHere.anchorYOffset = "10";
 
   const tabs = new docusign.Tabs();
   tabs.signHereTabs = [signHere];
@@ -404,18 +543,22 @@ async function getSigningURL(baseUri, accountId, accessToken, parentName) {
 
   envelopeDefinition.recipients = new docusign.Recipients();
   envelopeDefinition.recipients.signers = [signer];
-  envelopeDefinition.status = 'sent'; // Set envelope status to "sent" to immediately send it
+  envelopeDefinition.status = "sent"; // Set envelope status to "sent" to immediately send it
 
   // Send the envelope
   const results = await envelopesApi.createEnvelope(accountId, {
     envelopeDefinition,
   });
-  
+
   let viewRequest = makeRecipientViewRequest(parentName);
 
-  const rv_results = await envelopesApi.createRecipientView(accountId, results.envelopeId, {
-    recipientViewRequest: viewRequest,
-  });
+  const rv_results = await envelopesApi.createRecipientView(
+    accountId,
+    results.envelopeId,
+    {
+      recipientViewRequest: viewRequest,
+    }
+  );
 
   return { envelopeId: results.envelopeId, redirectUrl: rv_results };
 }
@@ -437,18 +580,18 @@ function makeRecipientViewRequest(parentName) {
   // the DocuSign signing. It's usually better to use
   // the session mechanism of your web framework. Query parameters
   // can be changed/spoofed very easily.
-  viewRequest.returnUrl = "https://cdn.tanuj.xyz/auth-done.png"
+  viewRequest.returnUrl = "https://cdn.tanuj.xyz/auth-done.png";
 
   // How has your app authenticated the user? In addition to your app's
   // authentication, you can include authenticate steps from DocuSign.
   // Eg, SMS authentication
-  viewRequest.authenticationMethod = 'none';
+  viewRequest.authenticationMethod = "none";
 
   // Recipient information must match embedded recipient info
   // we used to create the envelope.
   viewRequest.email = CONFIG.clientEmail;
   viewRequest.userName = parentName;
-  viewRequest.clientUserId = CONFIG.clientUserId
+  viewRequest.clientUserId = CONFIG.clientUserId;
 
   // DocuSign recommends that you redirect to DocuSign for the
   // embedded signing. There are multiple ways to save state.
