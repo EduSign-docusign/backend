@@ -12,7 +12,7 @@ const port = process.env.PORT || 8080;
 // Initialize Firebase Admin
 const { initializeApp, cert } = require("firebase-admin/app");
 const firebaseKey = require("./firebase-key.json");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore"); // Add FieldValue import
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
 initializeApp({
   credential: cert(firebaseKey),
@@ -26,6 +26,7 @@ const backendURL =
     : "https://backend-375617093037.us-central1.run.app";
 
 console.log(`Backend URL: ${backendURL}`);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -276,6 +277,7 @@ const refreshDocusignToken = async (refresh_token) => {
   }
 };
 
+//This is called when the parent/student clicks on a document in mobile app
 app.get('/api/getDocURL', async (req, res) => {
   const { document_id } = req.query;
   
@@ -363,6 +365,83 @@ async function getUserInfo(accessToken) {
     };
 }
 
+
+app.get('/api/createDocusignEnvelope', async (req, res) => {
+  const TOKEN = "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2Iiwia2lkIjoiNjgxODVmZjEtNGU1MS00Y2U5LWFmMWMtNjg5ODEyMjAzMzE3In0.AQsAAAABAAUABwAAoqDkRyjdSAgAAOLD8ooo3UgCAFOskxGdX7tAllGPBj-g1gMVAAEAAAAYAAEAAAAFAAAADQAkAAAAM2U5ODFjYmMtNmJjYS00YzI1LTk0NTMtMGM5MjdlY2RmYjg0IgAkAAAAM2U5ODFjYmMtNmJjYS00YzI1LTk0NTMtMGM5MjdlY2RmYjg0EgABAAAACwAAAGludGVyYWN0aXZlMACACwjkRyjdSDcAn4SD4mZiLUGGzh2rHNCINA.cAWWoVvhXjH3KxiNOui6qymxpB-_gbsCHnXKITe5rQINHQnocz7_BLvRmRO2HuXwX7e_g5JfaQvlRu2s-2ZU5-94zIPZUvC0xUUckTyKxOHz69cXu4CrjqT2_fy6LFLkEsTcBFJZ2mGzdQhXJa0dXZwP9tRaAjRkAUIbZdKHbvB5JQBA7-7iTU9sNNyHFqNeLH4bTtOH9J_i-g6scbo6HOxr5OXBfpNvJeKm-et-jI5fgH50nB7_JKfI_-epqDWxEba9XNPchZmfC36epmI91agcmqRbZA67Nfc7PM1lXdAvXlTCuQv_UT4_BzK8HA8IB8Hlc1J7d7hmSlXWXqqxEA"
+  const accountInfo = await getUserInfo(TOKEN)
+  const baseUri = accountInfo.baseUri
+  const accountId = accountInfo.accountId
+
+  const apiClient = new docusign.ApiClient();
+  apiClient.setBasePath(baseUri + '/restapi');
+  apiClient.addDefaultHeader('Authorization', `Bearer ${TOKEN}`);
+  
+
+  const envelopesApi = new docusign.EnvelopesApi(apiClient);
+
+  const envelopeDefinition = new docusign.EnvelopeDefinition();
+  envelopeDefinition.emailSubject = 'Please sign this document';
+
+  const documentBytes = fs.readFileSync(path.resolve('./ps.pdf'));
+  const documentBase64 = documentBytes.toString('base64');
+
+  const document = new docusign.Document();
+  document.documentBase64 = documentBase64;
+  document.name = 'TEST PERMISSION SLIP'; 
+  document.fileExtension = 'pdf'; 
+  document.documentId = '1'; 
+  envelopeDefinition.documents = [document];
+
+  const signer = new docusign.Signer();
+  signer.email = "tanuj@medihacks.org" 
+  signer.name = "Parent Signer"; 
+  signer.recipientId = '2';
+  signer.clientUserId = CONFIG.clientUserId
+
+  const signer2 = new docusign.Signer();
+  signer2.email = "goat@tanuj.xyz" 
+  signer2.name = "Student Signer"; 
+  signer2.recipientId = '1';
+  signer2.clientUserId = CONFIG.clientUserId
+
+  envelopeDefinition.recipients = new docusign.Recipients();
+  envelopeDefinition.recipients.signers = [signer, signer2];
+  envelopeDefinition.status = 'sent'; // Set envelope status to "sent" to immediately send it
+
+  // Send the envelope
+  const env_results = await envelopesApi.createEnvelope(accountId, {
+    envelopeDefinition,
+  });
+
+  let studentViewRequest = makeViewRequest("goat@tanuj.xyz", "Student Signer");
+  let parentViewRequest = makeViewRequest("tanuj@medihacks.org", "Parent Signer");
+
+  const studentURL = await envelopesApi.createRecipientView(accountId, env_results.envelopeId, {
+    recipientViewRequest: studentViewRequest,
+  });
+
+  const parentURL = await envelopesApi.createRecipientView(accountId, env_results.envelopeId, {
+    recipientViewRequest: parentViewRequest,
+  });
+
+   res.json({ envelopeId: env_results.envelopeId, studentURL, parentURL })
+})
+
+
+function makeViewRequest(email, name) {
+
+  let viewRequest = new docusign.RecipientViewRequest();
+
+  viewRequest.returnUrl = "https://cdn.tanuj.xyz/auth-done.png"
+
+  viewRequest.authenticationMethod = 'none';
+
+  viewRequest.email = email;
+  viewRequest.userName = name;
+  viewRequest.clientUserId = CONFIG.clientUserId
+
+  return viewRequest;
+}
 
 
 async function getSigningURL(baseUri, accountId, accessToken, parentName) {
@@ -463,5 +542,5 @@ function makeRecipientViewRequest(parentName) {
 
 // Start server
 app.listen(port, () => {
-  console.log(`Server running at ${backendURL}:${port}`);
+  console.log(`Server running at ${backendURL}`);
 });
