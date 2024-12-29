@@ -27,7 +27,7 @@ const upload = multer({
   },
 });
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 8080;
 
 // Initialize Firebase Admin
 const { initializeApp, cert } = require("firebase-admin/app");
@@ -606,5 +606,5 @@ function makeRecipientViewRequest(parentName) {
 
 // Start server
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Server running at ${backendURL}:${port}`);
 });
