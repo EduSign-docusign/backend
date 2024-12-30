@@ -6,7 +6,6 @@ const path = require("path");
 const cors = require("cors");
 require("dotenv").config();
 
-const app = express();
 const port = process.env.PORT || 8080;
 
 // Initialize Firebase Admin
@@ -18,6 +17,8 @@ initializeApp({
   credential: cert(firebaseKey),
 });
 
+
+
 console.log("NODE_ENV", process.env.NODE_ENV)
 
 const backendURL =
@@ -27,7 +28,19 @@ const backendURL =
 
 console.log(`Backend URL: ${backendURL}`);
 
-// Middleware
+
+
+
+const multer = require("multer");
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+});
+const app = express();
+
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public")); // Serve static files from 'public' directory
@@ -48,6 +61,121 @@ app.get("/", (req, res) => {
 
 
 
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file provided" });
+    }
+
+    const { courseId, courseName, teacherId } = req.body;
+    const file = req.file;
+
+    const bucket = getStorage().bucket();
+
+    // Create a unique filename
+    const timestamp = Date.now();
+    const filename = `permission_slips/${teacherId}/${courseId}/${timestamp}_${file.originalname}`;
+
+    const blob = bucket.file(filename);
+    const blobStream = blob.createWriteStream({
+      metadata: {
+        contentType: file.mimetype,
+      },
+    });
+
+    blobStream.on("error", (error) => {
+      console.error("Upload error:", error);
+      res.status(500).json({ error: "Failed to upload file" });
+    });
+
+    // Handle success
+    blobStream.on("finish", async () => {
+      // Make the file public and get URL
+      await blob.makePublic();
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+
+      // Save document reference in Firestore
+      const db = getFirestore();
+      const docRef = await db.collection("documents").add({
+        course_id: courseId,
+        course_name: courseName,
+        file_url: publicUrl,
+        teacher_id: teacherId,
+        file_name: file.originalname,
+        uploaded_at: FieldValue.serverTimestamp(),
+        status: "uploaded",
+      });
+
+      await createAllDocusignEnvelopes(docRef.id)
+      
+      res.status(200).json({
+        success: true,
+        documentId: docRef.id,
+        fileUrl: publicUrl,
+      });
+    });
+
+    // Write the file to Storage
+    blobStream.end(file.buffer);
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({
+      error: "Failed to process file upload",
+      details: error.message,
+    });
+  }
+});
+
+// Delete file endpoint
+app.delete("/api/files/:fileId", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const { teacherId } = req.body;
+
+    // Get the file document
+    const db = getFirestore();
+    const fileDoc = await db.collection("documents").doc(fileId).get();
+
+    if (!fileDoc.exists) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const fileData = fileDoc.data();
+    console.log("File data:", fileData); // Debug log
+
+    // Verify teacher ownership
+    if (fileData.teacher_id !== teacherId) {
+      return res
+        .status(403)
+        .json({ error: "Unauthorized to delete this file" });
+    }
+
+    // Get the file path from the original upload path
+    const filePath = `permission_slips/${fileData.teacher_id}/${fileData.course_id}/${fileData.file_name}`;
+    console.log("Attempting to delete file at path:", filePath); // Debug log
+
+    // Get storage bucket and delete file
+    const bucket = getStorage().bucket(CONFIG.storageBucket);
+    await bucket
+      .file(filePath)
+      .delete()
+      .catch((error) => {
+        console.log("Storage delete error (non-fatal):", error);
+        // Continue even if storage delete fails
+      });
+
+    // Delete the Firestore document
+    await db.collection("documents").doc(fileId).delete();
+
+    res.status(200).json({ message: "File deleted successfully" });
+  } catch (error) {
+    console.error("Delete file error:", error);
+    res.status(500).json({
+      error: "Failed to delete file",
+      details: error.message,
+    });
+  }
+});
 
 
 // Canvas API Proxy
@@ -365,30 +493,21 @@ async function getUserInfo(accessToken) {
     };
 }
 
+function getStudentsByCourseId(courses, courseId) {
+  const course = courses.find((course) => course.id === courseId);
 
-app.get('/api/createDocusignEnvelope', async (req, res) => {
-  const { document_id } = req.query;
-  const db = getFirestore();
+  return course ? course.students.map((student) => student.name) : [];
+}
 
-  const firestore_document = await db.collection("documents").doc(document_id).get()
-  const teacher_id = firestore_document.data().teacher_id
+//document_id is a Firebase document id
+// app.get('/api/foo', async (req, res) => {
+//   await createAllDocusignEnvelopes("T3l8dlaY3ckRrDUvn2QF")
+//   res.json("ok")
+// });
 
-  const teacher_document = await db.collection("teachers").doc(teacher_id).get()
-  const access_token = teacher_document.data().docusign_auth_token
-
-  const accountInfo = await getUserInfo(TOKEN)
-  const baseUri = accountInfo.baseUri
-  const accountId = accountInfo.accountId
-
-  const apiClient = new docusign.ApiClient();
-  apiClient.setBasePath(baseUri + '/restapi');
-  apiClient.addDefaultHeader('Authorization', `Bearer ${TOKEN}`);
-  
-
-  const envelopesApi = new docusign.EnvelopesApi(apiClient);
-
+async function createDocusignEnvelope(envelopesApi, baseUri, accountId, studentEmail, studentName, parentEmail, parentName) {
   const envelopeDefinition = new docusign.EnvelopeDefinition();
-  envelopeDefinition.emailSubject = 'Please sign this document';
+  envelopeDefinition.emailSubject = `Parents & Students, please sign this document`;
 
   const documentBytes = fs.readFileSync(path.resolve('./ps.pdf'));
   const documentBase64 = documentBytes.toString('base64');
@@ -401,39 +520,99 @@ app.get('/api/createDocusignEnvelope', async (req, res) => {
   envelopeDefinition.documents = [document];
 
   const signer = new docusign.Signer();
-  signer.email = "tanuj@medihacks.org" 
-  signer.name = "Parent Signer"; 
+  signer.email = parentEmail
+  signer.name = parentName; 
   signer.recipientId = '2';
   signer.clientUserId = CONFIG.clientUserId
 
   const signer2 = new docusign.Signer();
-  signer2.email = "goat@tanuj.xyz" 
-  signer2.name = "Student Signer"; 
+  signer2.email = studentEmail 
+  signer2.name = studentName; 
   signer2.recipientId = '1';
   signer2.clientUserId = CONFIG.clientUserId
 
   envelopeDefinition.recipients = new docusign.Recipients();
   envelopeDefinition.recipients.signers = [signer, signer2];
-  envelopeDefinition.status = 'sent'; // Set envelope status to "sent" to immediately send it
+  envelopeDefinition.status = 'sent';
 
-  // Send the envelope
   const env_results = await envelopesApi.createEnvelope(accountId, {
     envelopeDefinition,
   });
 
-  let studentViewRequest = makeViewRequest("goat@tanuj.xyz", "Student Signer");
-  let parentViewRequest = makeViewRequest("tanuj@medihacks.org", "Parent Signer");
+  return env_results.envelopeId
+}
 
-  const studentURL = await envelopesApi.createRecipientView(accountId, env_results.envelopeId, {
-    recipientViewRequest: studentViewRequest,
-  });
+async function createAllDocusignEnvelopes(document_id) {
+  const db = getFirestore();
 
-  const parentURL = await envelopesApi.createRecipientView(accountId, env_results.envelopeId, {
-    recipientViewRequest: parentViewRequest,
-  });
+  const firestore_document = await db.collection("documents").doc(document_id).get()
+  const firestore_data = firestore_document.data()
+  const course_id = firestore_data.course_id
+  const teacher_id = firestore_data.teacher_id
 
-   res.json({ envelopeId: env_results.envelopeId, studentURL, parentURL })
-})
+  const teacher_document = await db.collection("teachers").doc(teacher_id).get()
+  const teacher_data = teacher_document.data()
+  const courses = teacher_data.courses
+
+  console.log(courses)
+  const students = getStudentsByCourseId(courses, course_id)
+  console.log("Sending envelope to students:", students)
+
+
+  const access_token = teacher_data.docusign_auth_token
+
+  const accountInfo = await getUserInfo(access_token)
+  const baseUri = accountInfo.baseUri
+  const accountId = accountInfo.accountId
+
+  const apiClient = new docusign.ApiClient();
+  apiClient.setBasePath(baseUri + '/restapi');
+  apiClient.addDefaultHeader('Authorization', `Bearer ${access_token}`);
+  
+
+  const envelopesApi = new docusign.EnvelopesApi(apiClient);
+
+  const envelope_ids = {}
+
+  for (const student of students) {
+    try {
+      // Query Firestore for the student document where name matches
+      const querySnapshot = await db.collection("students").where('name', '==', student).get()
+
+      if (querySnapshot.empty) {
+        console.log(`No document found for student: ${student}`);
+        continue;
+      }
+
+      const studentDoc = querySnapshot.docs[0];
+      const studentData = studentDoc.data()
+      console.log(`Document for ${student}:`, studentData);
+
+      const envelope_id = await createDocusignEnvelope(envelopesApi, baseUri, accountId, studentData.email, studentData.name, studentData.parentEmail, studentData.parentName)
+
+      envelope_ids[student] = envelope_id
+    } catch (error) {
+      console.error(`Error fetching document for student ${student}:`, error);
+    }
+  }
+
+  await db.collection("documents").doc(document_id).update({
+    recipients: envelope_ids
+  })
+  
+
+  // let studentViewRequest = makeViewRequest("goat@tanuj.xyz", "Student Signer");
+  // let parentViewRequest = makeViewRequest("tanuj@medihacks.org", "Parent Signer");
+
+  // const studentURL = await envelopesApi.createRecipientView(accountId, env_results.envelopeId, {
+  //   recipientViewRequest: studentViewRequest,
+  // });
+
+  // const parentURL = await envelopesApi.createRecipientView(accountId, env_results.envelopeId, {
+  //   recipientViewRequest: parentViewRequest,
+  // });
+
+}
 
 
 function makeViewRequest(email, name) {
