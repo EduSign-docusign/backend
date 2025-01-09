@@ -336,7 +336,75 @@ body {
     cursor: pointer;
     transition: background-color 0.2s;
 }
+.document-card {
+    background: var(--background-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
 
+.document-status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.document-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.document-name {
+    font-weight: 500;
+}
+
+.document-due-date {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.signing-status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.student-signing-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: var(--card-background);
+    border-radius: 0.375rem;
+}
+
+.status-icons {
+    display: flex;
+    gap: 1rem;
+}
+
+.status-icon {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.status-icon.signed {
+    color: var(--success-color);
+}
+
+.documents-section {
+    margin: 1rem 0;
+}
+
+.documents-section h5 {
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+    font-weight: 500;
+}
 .confirm-upload-button:hover {
     background: var(--primary-dark);
 }

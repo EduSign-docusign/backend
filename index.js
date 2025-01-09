@@ -458,7 +458,7 @@ function makeViewRequest(email, name, envelope_id, document_id) {
 
   let viewRequest = new docusign.RecipientViewRequest();
 
-  viewRequest.returnUrl = `${backendURL}/api/signingComplete?document_id=${document_id}&student_id=${student_id}`
+  viewRequest.returnUrl = `${backendURL}/api/signingComplete?document_id=${document_id}&envelope_id=${envelope_id}`
 
   viewRequest.authenticationMethod = 'none';
 
