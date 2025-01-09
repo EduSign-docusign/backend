@@ -388,14 +388,102 @@ body {
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    color: var(--text-secondary);
     font-size: 0.75rem;
 }
 
-.status-icon.signed {
-    color: var(--success-color);
+.status-icon svg {
+    width: 16px;
+    height: 16px;
 }
 
+.status-icon .checkmark {
+    fill: #10B981;
+    /* green */
+}
+
+.status-icon .cross {
+    fill: #EF4444;
+    /* red */
+}
+
+.status-icon span {
+    color: var(--text-secondary);
+}
+
+.student-signing-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: var(--card-background);
+    border-radius: 0.375rem;
+    border: 1px solid var(--border-color);
+}
+
+.student-name {
+    font-weight: 500;
+}
+.view-students-btn {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.2s ease;
+}
+
+.view-students-btn:hover {
+    background: var(--card-background);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.view-students-btn:active {
+    transform: translateY(0);
+}
+
+.view-students-btn::after {
+    content: "";
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-left: 0;
+    border-top: 0;
+    transform: rotate(45deg);
+    transition: transform 0.2s ease;
+    margin-left: 0.5rem;
+}
+
+/* Rotate arrow when list is visible */
+.students-list:not(.hidden)+.view-students-btn::after {
+    transform: rotate(-135deg);
+}
+
+/* Add some spacing around the button */
+.students-section {
+    margin: 1.5rem 0;
+}
+
+/* Style the students list when visible */
+.students-list {
+    margin-top: 1rem;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.students-list.hidden {
+    display: none;
+}
 .documents-section {
     margin: 1rem 0;
 }

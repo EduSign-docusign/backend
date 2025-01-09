@@ -294,44 +294,54 @@ async function loadCourses(teacherId) {
       // Fetch documents for this course
       const documents = await fetchCourseDocuments(course.id);
       
-      const documentsHtml = documents.map(doc => {
-        // Create the document status section with checkmarks
-        const documentStatusHtml = `
-          <div class="document-status">
-            <div class="document-info">
-              <span class="document-name">${doc.file_name}</span>
-              <span class="document-due-date">Due: ${new Date(doc.due_date?.toDate()).toLocaleDateString()}</span>
-            </div>
-            <div class="signing-status">
-              ${doc.docusign_envelopes?.map(envelope => `
-                <div class="student-signing-status">
-                  <span class="student-name">${envelope.name}</span>
-                  <div class="status-icons">
-                    <div class="status-icon ${envelope.studentHasSigned ? 'signed' : ''}" title="Student signature">
-                      <svg viewBox="0 0 24 24" width="16" height="16">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
-                      </svg>
-                      <span>Student</span>
-                    </div>
-                    <div class="status-icon ${envelope.parentHasSigned ? 'signed' : ''}" title="Parent signature">
-                      <svg viewBox="0 0 24 24" width="16" height="16">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
-                      </svg>
-                      <span>Parent</span>
-                    </div>
-                  </div>
-                </div>
-              `).join('') || ''}
+      // Update the status icons part in loadCourses function
+const documentsHtml = documents.map(doc => {
+  const documentStatusHtml = `
+    <div class="document-status">
+      <div class="document-info">
+        <span class="document-name">${doc.file_name}</span>
+        <span class="document-due-date">Due: ${new Date(doc.due_date?.toDate()).toLocaleDateString()}</span>
+      </div>
+      <div class="signing-status">
+        ${doc.docusign_envelopes?.map(envelope => `
+          <div class="student-signing-status">
+            <span class="student-name">${envelope.name}</span>
+            <div class="status-icons">
+              <div class="status-icon" title="Student signature">
+                ${envelope.studentHasSigned ? 
+                  `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                   </svg>` : 
+                  `<svg class="cross" viewBox="0 0 24 24" width="16" height="16">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                   </svg>`
+                }
+                <span>Student</span>
+              </div>
+              <div class="status-icon" title="Parent signature">
+                ${envelope.parentHasSigned ? 
+                  `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                   </svg>` : 
+                  `<svg class="cross" viewBox="0 0 24 24" width="16" height="16">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                   </svg>`
+                }
+                <span>Parent</span>
+              </div>
             </div>
           </div>
-        `;
+        `).join('') || ''}
+      </div>
+    </div>
+  `;
 
-        return `
-          <div class="document-card">
-            ${documentStatusHtml}
-          </div>
-        `;
-      }).join('');
+  return `
+    <div class="document-card">
+      ${documentStatusHtml}
+    </div>
+  `;
+}).join('');
 
       return `
         <div class="course-card">

@@ -482,11 +482,11 @@ app.get('/api/signingComplete', async (req, res) => {
       for (let envelope of docusign_envelopes) {
           if (envelope.envelope_id === envelope_id) {
               envelope.studentHasSigned = true;
-              return envelope; // Return the updated object
+              break;
           }
       }
-      return null; // Return null if no matching envelope is found
-    }
+      return docusign_envelopes; // Return the whole array
+  }
 
     await firestore_document.update({
       docusign_envelopes: markStudentHasSigned(envelope_id, firestore_data.docusign_envelopes)
