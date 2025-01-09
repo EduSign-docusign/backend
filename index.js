@@ -4,9 +4,21 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const SignatureChecker = require('./signature');
+
 require("dotenv").config();
 
 const port = process.env.PORT || 8080;
+
+// Initialize Twilio
+const twilio = require('twilio');
+const schedule = require('node-schedule');
+const TWILIO_CONFIG = {
+  accountSid: process.env.TWILIO_ACCOUNT_SID,
+  authToken: process.env.TWILIO_AUTH_TOKEN,
+  phoneNumber: process.env.TWILIO_PHONE_NUMBER
+};
+const twilioClient = twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
 // Initialize Firebase Admin
 const { initializeApp, cert } = require("firebase-admin/app");
@@ -31,8 +43,6 @@ const backendURL =
     : "https://backend-375617093037.us-central1.run.app";
 
 console.log(`Backend URL: ${backendURL}`);
-
-
 
 
 const multer = require("multer");
@@ -62,6 +72,8 @@ const CONFIG = {
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+const db = getFirestore();
+const signatureChecker = new SignatureChecker(db, TWILIO_CONFIG);
 
 
 
@@ -146,7 +158,19 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// Delete file endpoint
+// add endpoint that will run the call from signature.js
+app.post('/trigger-reminder-calls/:documentId', async (req, res) => {
+    const { documentId } = req.params;
+
+    try {
+        const callResults = await signatureChecker.triggerReminderCalls(documentId);
+        res.status(200).json({ success: true, callResults });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete file end   int
 app.delete("/api/files/:fileId", async (req, res) => {
   try {
     const { fileId } = req.params;
@@ -415,7 +439,7 @@ app.get('/api/getSigningURL', async (req, res) => {
       const firestore_document = await db.collection("documents").doc(document_id).get()
       const firestore_data = firestore_document.data()
 
-      const student_document = await db.collection("students").doc(student_id).get()
+      const student_document = await db.collection("users").doc(student_id).get()
       const student_data = student_document.data()
 
       const teacher_id = firestore_data.teacher_id
@@ -670,7 +694,7 @@ async function createAllDocusignEnvelopes(document_id) {
   for (const student of students) {
     try {
       // Query Firestore for the student document where name matches
-      const querySnapshot = await db.collection("students").where('name', '==', student).get()
+      const querySnapshot = await db.collection("users").where('name', '==', student).get()
 
       if (querySnapshot.empty) {
         console.log(`No document found for student: ${student}`);
