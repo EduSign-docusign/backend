@@ -475,8 +475,9 @@ app.get('/api/signingComplete', async (req, res) => {
   try {
     const db = getFirestore()
 
-    const firestore_document = await db.collection("documents").doc(document_id).get()
-    const firestore_data = firestore_document.data()
+    const firestore_document = db.collection("documents").doc(document_id)
+    const firestore_snap = await firestore_document.get()
+    const firestore_data = firestore_snap.data()
 
     function markStudentHasSigned(envelope_id, docusign_envelopes) {
       for (let envelope of docusign_envelopes) {
