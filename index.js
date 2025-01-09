@@ -489,7 +489,7 @@ app.get('/api/signingComplete', async (req, res) => {
     }
 
     await firestore_document.update({
-      docusign_envelopes: markStudentHasSigned(envelope_id, docusign_envelopes)
+      docusign_envelopes: markStudentHasSigned(envelope_id, firestore_data.docusign_envelopes)
     })
 
     res.redirect("https://cdn.tanuj.xyz/auth-done.png")
