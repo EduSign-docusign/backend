@@ -624,9 +624,62 @@ body {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lg);
 }
+.upload-details {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: var(--background-color);
+    border-radius: 0.5rem;
+}
 
+.upload-details p {
+    margin: 0.5rem 0;
+    color: var(--text-secondary);
+}
+
+.upload-details span {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.primary-button {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.primary-button:hover {
+    background: var(--primary-dark);
+}
+
+.secondary-button {
+    padding: 0.75rem 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+}
+
+.secondary-button:hover {
+    background: var(--background-color);
+}
 .student-name {
-    font-size: 1.125rem;
+    font-size: 0.75rem;
     font-weight: 600;
     margin-bottom: 0.5rem;
 }

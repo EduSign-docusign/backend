@@ -439,11 +439,20 @@ app.get('/api/getSigningURL', async (req, res) => {
       } else {
           throw { status: 400, message: "Type must be student or parent" }
       }
+      
+      function getEnvelopeIDByStudentName(studentName, envelopes) {
+          for (const envelope of envelopes) {
+            if (envelope.name == studentName) {
+              return envelope.envelope_id
+            }
+          }
+      }
 
-      const envelope_id = firestore_data.recipients[student_data.name]
+      const envelope_id = getEnvelopeIDByStudentName(student_data.name, firestore_data.docusign_envelopes);
+
       const viewRequest = makeViewRequest(email, name, envelope_id, document_id);
       
-      const url = await envelopesApi.createRecipientView(teacher_data.docusign_account_id, envelope, {
+      const url = await envelopesApi.createRecipientView(teacher_data.docusign_account_id, envelope_id, {
         recipientViewRequest: viewRequest,
       });
 

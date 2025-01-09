@@ -168,5 +168,23 @@
     <!-- Add this before closing </body> tag -->
     <script src="animations.js"></script>
     <script src="app.js"></script>
+    <div id="uploadConfirmModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Confirm Upload</h3>
+    <div class="upload-details">
+      <p>File: <span id="confirmFileName"></span></p>
+      <p>Due Date: <span id="confirmDueDate"></span></p>
+    </div>
+    <div class="modal-buttons">
+      <button type="button" class="secondary-button" id="cancelUpload">
+        Cancel
+      </button>
+      <button type="button" class="primary-button" id="confirmUpload">
+        <span>Confirm Upload</span>
+        <div class="button-loader hidden"></div>
+      </button>
+    </div>
+  </div>
+</div>
   </body>
 </html>

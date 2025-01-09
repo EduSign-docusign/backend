@@ -375,31 +375,32 @@ const documentsHtml = documents.map(doc => {
           </div>
 
           <div class="file-upload">
-            <div class="upload-form">
-              <input 
-                type="file" 
-                id="file-${course.id}" 
-                class="hidden"
-                accept=".pdf,.doc,.docx"
-              >
-              <div class="date-input">
-                <label for="due-date-${course.id}">Due Date:</label>
-                <input 
-                  type="date" 
-                  id="due-date-${course.id}"
-                  min="${new Date().toISOString().split('T')[0]}"
-                  required
-                >
-              </div>
-              <label 
-                for="file-${course.id}" 
-                class="file-upload-button"
-                onclick="handleUploadClick('${course.id}')"
-              >
-                Upload Permission Slip
-              </label>
-            </div>
-          </div>
+  <div class="upload-form">
+    <input 
+      type="file" 
+      id="file-${course.id}" 
+      class="hidden"
+      accept=".pdf,.doc,.docx"
+      onchange="handleFileSelect(event, '${course.id}', '${course.name}')"
+    >
+    <div class="date-input">
+      <label for="due-date-${course.id}">Due Date:</label>
+      <input 
+        type="date" 
+        id="due-date-${course.id}"
+        min="${new Date().toISOString().split('T')[0]}"
+        required
+      >
+    </div>
+    <label 
+      for="file-${course.id}" 
+      class="file-upload-button"
+      onclick="handleUploadClick('${course.id}')"
+    >
+      Upload Permission Slip
+    </label>
+  </div>
+</div>
         </div>
       `;
     }));
@@ -447,26 +448,128 @@ function handleUploadClick(courseId) {
     return false;
   }
 }
+async function processUpload() {
+  if (!currentUploadData) return;
 
+  const confirmButton = document.getElementById('confirmUpload');
+  
+  try {
+    window.appAnimations?.toggleLoadingButton?.(confirmButton, true);
+
+    const formData = new FormData();
+    formData.append('file', currentUploadData.file);
+    formData.append('courseId', currentUploadData.courseId);
+    formData.append('courseName', currentUploadData.courseName);
+    formData.append('teacherId', auth.currentUser.uid);
+    formData.append('dueDate', currentUploadData.dueDate);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Upload failed');
+    }
+
+    const result = await response.json();
+
+    window.appAnimations?.showNotification?.(
+      "Permission slip uploaded successfully!",
+      "success"
+    );
+
+    // Reset form
+    const fileInput = document.getElementById(`file-${currentUploadData.courseId}`);
+    const dueDateInput = document.getElementById(`due-date-${currentUploadData.courseId}`);
+    fileInput.value = '';
+    dueDateInput.value = '';
+
+    // Hide modal
+    document.getElementById('uploadConfirmModal').classList.add('hidden');
+
+    // Reload the courses to show updated documents
+    await loadCourses(auth.currentUser.uid);
+
+    // Redirect to DocuSign auth
+    window.location.href = `/api/teacher-auth?teacher_id=${auth.currentUser.uid}`;
+
+    return result.documentId;
+  } catch (error) {
+    console.error("Error uploading file:", error);
+    window.appAnimations?.showNotification?.(error.message, "error");
+  } finally {
+    window.appAnimations?.toggleLoadingButton?.(confirmButton, false);
+    currentUploadData = null;
+  }
+}
+// Add event listeners for the confirmation modal
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('uploadConfirmModal');
+  const confirmBtn = document.getElementById('confirmUpload');
+  const cancelBtn = document.getElementById('cancelUpload');
+
+  // Handle confirmation
+  confirmBtn.addEventListener('click', processUpload);
+
+  // Handle cancellation
+  cancelBtn.addEventListener('click', () => {
+    modal.classList.add('hidden');
+    if (currentUploadData) {
+      const fileInput = document.getElementById(`file-${currentUploadData.courseId}`);
+      fileInput.value = '';
+      currentUploadData = null;
+    }
+  });
+
+  // Close modal when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+      if (currentUploadData) {
+        const fileInput = document.getElementById(`file-${currentUploadData.courseId}`);
+        fileInput.value = '';
+        currentUploadData = null;
+      }
+    }
+  });
+});
+
+// Make handlers available globally
+window.handleFileSelect = handleFileSelect;
+window.handleUploadClick = handleUploadClick;
 // File upload handling
+// File selection handling
 // File selection handling
 async function handleFileSelect(event, courseId, courseName) {
   const file = event.target.files[0];
   if (!file) return;
 
-  // Get UI elements
-  const uploadForm = document.getElementById(`upload-form-${courseId}`);
-  const uploadConfirm = document.getElementById(`upload-confirm-${courseId}`);
-  const fileNameDisplay = document.getElementById(`selected-file-${courseId}`);
+  const dueDateInput = document.getElementById(`due-date-${courseId}`);
+  if (!dueDateInput.value) {
+    window.appAnimations?.showNotification?.("Please select a due date", "error");
+    event.target.value = '';
+    return;
+  }
 
-  // Display selected file name
-  fileNameDisplay.textContent = file.name;
+  // Store upload data
+  currentUploadData = {
+    file,
+    courseId,
+    courseName,
+    dueDate: dueDateInput.value
+  };
 
-  // Hide upload form and show confirmation
-  uploadForm.classList.add('hidden');
-  uploadConfirm.classList.remove('hidden');
+  // Show confirmation modal
+  const modal = document.getElementById('uploadConfirmModal');
+  const fileName = document.getElementById('confirmFileName');
+  const dueDate = document.getElementById('confirmDueDate');
+  
+  fileName.textContent = file.name;
+  dueDate.textContent = new Date(dueDateInput.value).toLocaleDateString();
+  
+  modal.classList.remove('hidden');
 }
-
 // Reset file selection
 function resetFileSelection(courseId) {
   // Reset file input
@@ -551,7 +654,6 @@ window.resetFileSelection = resetFileSelection;
 window.confirmUpload = confirmUpload;
 
 // Make functions available globally
-window.handleFileSelect = handleFileSelect;
 window.handleUploadClick = handleUploadClick;
 
 // Auth state observer
