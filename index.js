@@ -12,10 +12,14 @@ const port = process.env.PORT || 8080;
 const { initializeApp, cert } = require("firebase-admin/app");
 const firebaseKey = require("./firebase-key.json");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage");
 
+// Initialize the app with a service account
 initializeApp({
   credential: cert(firebaseKey),
+  storageBucket: "edusign-d5abd.firebasestorage.app" // Add this line
 });
+const bucket = getStorage().bucket('gs://edusign-d5abd.firebasestorage.app');
 
 
 
@@ -67,57 +71,71 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "No file provided" });
     }
 
-    const { courseId, courseName, teacherId } = req.body;
-    const file = req.file;
+    const { courseId, courseName, teacherId, dueDate } = req.body;
 
-    const bucket = getStorage().bucket();
+    if (!dueDate) {
+      return res.status(400).json({ error: "Due date is required" });
+    }
+
+    const file = req.file;
 
     // Create a unique filename
     const timestamp = Date.now();
     const filename = `permission_slips/${teacherId}/${courseId}/${timestamp}_${file.originalname}`;
 
-    const blob = bucket.file(filename);
-    const blobStream = blob.createWriteStream({
+    // Create a new blob in the bucket and upload the file data
+    const fileBlob = bucket.file(filename);
+
+    const blobStream = fileBlob.createWriteStream({
+      resumable: false,
       metadata: {
         contentType: file.mimetype,
       },
     });
 
-    blobStream.on("error", (error) => {
-      console.error("Upload error:", error);
-      res.status(500).json({ error: "Failed to upload file" });
+    blobStream.on('error', (err) => {
+      console.error('Upload error:', err);
+      res.status(500).json({ error: "Failed to upload file", details: err.message });
     });
 
-    // Handle success
-    blobStream.on("finish", async () => {
-      // Make the file public and get URL
-      await blob.makePublic();
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    blobStream.on('finish', async () => {
+      // Make the file public
+      try {
+        await fileBlob.makePublic();
 
-      // Save document reference in Firestore
-      const db = getFirestore();
-      const docRef = await db.collection("documents").add({
-        course_id: courseId,
-        course_name: courseName,
-        file_url: publicUrl,
-        teacher_id: teacherId,
-        file_name: file.originalname,
-        uploaded_at: FieldValue.serverTimestamp(),
-        status: "uploaded",
-      });
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
 
-      //this handles docusign stuff
-      await createAllDocusignEnvelopes(docRef.id)
-      //
-      
-      res.status(200).json({
-        success: true,
-        documentId: docRef.id,
-        fileUrl: publicUrl,
-      });
+        // Save document reference in Firestore with due date
+        const db = getFirestore();
+        const docRef = await db.collection("documents").add({
+          course_id: courseId,
+          course_name: courseName,
+          file_url: publicUrl,
+          teacher_id: teacherId,
+          file_name: file.originalname,
+          uploaded_at: FieldValue.serverTimestamp(),
+          due_date: new Date(dueDate),
+          status: "uploaded",
+        });
+
+        // Handle DocuSign envelopes
+        await createAllDocusignEnvelopes(docRef.id);
+
+        res.status(200).json({
+          success: true,
+          documentId: docRef.id,
+          fileUrl: publicUrl,
+          dueDate: dueDate
+        });
+      } catch (err) {
+        console.error('Error after upload:', err);
+        res.status(500).json({ 
+          error: "Failed to process file after upload", 
+          details: err.message 
+        });
+      }
     });
 
-    // Write the file to Storage
     blobStream.end(file.buffer);
   } catch (error) {
     console.error("Upload error:", error);
@@ -204,6 +222,7 @@ app.get("/api/canvas/courses", async (req, res) => {
 
 
 // Update the server endpoint (server.js)
+// Update the server endpoint (server.js)
 app.post("/api/canvas/save-token", async (req, res) => {
   const { token, teacherId } = req.body;
 
@@ -240,43 +259,20 @@ app.post("/api/canvas/save-token", async (req, res) => {
             }
           );
 
-          // Add null checks and default values
-          const students = studentsResponse.data.map((student) => {
-            // Split the name into parts
-            const nameParts = (
-              student.sortable_name ||
-              student.name ||
-              ""
-            ).split(",");
-            const lastName = (nameParts[0] || "").trim();
-            const firstName = (nameParts[1] || "").trim();
-
-            // Get first 3 letters of first and last name
-            const firstThree = firstName.slice(0, 3).toLowerCase();
-            const lastThree = lastName.slice(0, 3).toLowerCase();
-
-            // Create email pattern
-            const emailPattern = `${firstThree}${lastThree}@lgsuhsd.org`;
-
-            // Return only the fields we need with default values
-            return {
-              id: student.id?.toString() || "",
-              name: student.name || "",
-              sortable_name: student.sortable_name || "",
-              email_pattern: emailPattern,
-            };
-          });
+          // Just get an array of names
+          const studentNames = studentsResponse.data
+            .map(student => student.name || "")
+            .filter(name => name); // Remove any empty names
 
           console.log(
-            `Processed ${students.length} students for course ${course.id}`
+            `Processed ${studentNames.length} students for course ${course.id}`
           );
 
-          // Return course with default values
+          // Return course with just id, name, and array of student names
           return {
             id: course.id?.toString() || "",
             name: course.name || "",
-            course_code: course.course_code || "",
-            students: students || [],
+            students: studentNames,
           };
         } catch (error) {
           console.error(
@@ -287,7 +283,6 @@ app.post("/api/canvas/save-token", async (req, res) => {
           return {
             id: course.id?.toString() || "",
             name: course.name || "",
-            course_code: course.course_code || "",
             students: [],
           };
         }
@@ -329,7 +324,6 @@ app.post("/api/canvas/save-token", async (req, res) => {
     });
   }
 });
-
 
 
 
@@ -446,9 +440,10 @@ app.get('/api/getSigningURL', async (req, res) => {
           throw { status: 400, message: "Type must be student or parent" }
       }
 
-      const viewRequest = makeViewRequest(email, name);
+      const envelope_id = firestore_data.recipients[student_data.name]
+      const viewRequest = makeViewRequest(email, name, envelope_id, document_id);
       
-      const url = await envelopesApi.createRecipientView(teacher_data.docusign_account_id, firestore_data.recipients[student_data.name], {
+      const url = await envelopesApi.createRecipientView(teacher_data.docusign_account_id, envelope, {
         recipientViewRequest: viewRequest,
       });
 
@@ -459,11 +454,11 @@ app.get('/api/getSigningURL', async (req, res) => {
   }
 });
 
-function makeViewRequest(email, name) {
+function makeViewRequest(email, name, envelope_id, document_id) {
 
   let viewRequest = new docusign.RecipientViewRequest();
 
-  viewRequest.returnUrl = "https://cdn.tanuj.xyz/auth-done.png"
+  viewRequest.returnUrl = `${backendURL}/api/signingComplete?document_id=${document_id}&student_id=${student_id}`
 
   viewRequest.authenticationMethod = 'none';
 
@@ -473,6 +468,37 @@ function makeViewRequest(email, name) {
 
   return viewRequest;
 }
+
+app.get('/api/signingComplete', async (req, res) => {
+  const { document_id, envelope_id } = req.query;
+
+  try {
+    const db = getFirestore()
+
+    const firestore_document = await db.collection("documents").doc(document_id).get()
+    const firestore_data = firestore_document.data()
+
+    function markStudentHasSigned(envelope_id, docusign_envelopes) {
+      for (let envelope of docusign_envelopes) {
+          if (envelope.envelope_id === envelope_id) {
+              envelope.studentHasSigned = true;
+              return envelope; // Return the updated object
+          }
+      }
+      return null; // Return null if no matching envelope is found
+    }
+
+    await firestore_document.update({
+      docusign_envelopes: markStudentHasSigned(envelope_id, docusign_envelopes)
+    })
+
+    res.redirect("https://cdn.tanuj.xyz/auth-done.png")
+  } catch(error) {
+    console.error(JSON.stringify(error))
+
+    res.status(error.status || 500).json({ error: error.message || 'Failed to complete signing URL', status: error.status || 500 });
+  }
+});
 
 
 async function getUserInfo(accessToken) {
@@ -501,11 +527,9 @@ async function getUserInfo(accessToken) {
     };
 }
 
-//given the dictionary students which looks like courses: { courseId: [{name: Tanuj, student_id: 1}]} return an array of students in a courseId
 function getStudentsByCourseId(courses, courseId) {
   const course = courses.find((course) => course.id === courseId);
-
-  return course ? course.students.map((student) => student.name) : [];
+  return course.students
 }
 
 app.get('/api/createEnvelopeTest', async (req, res) => {
@@ -584,7 +608,7 @@ async function getTeacherData(teacher_id) {
 
         access_token = await refreshDocusignToken(teacher_data.docusign_refresh_token);
 
-        await db.collection("teachers").doc(firestore_data.teacher_id).update({
+        await db.collection("teachers").doc(teacher_id).update({
           docusign_auth_token: access_token,
         });
 
@@ -619,7 +643,7 @@ async function createAllDocusignEnvelopes(document_id) {
   console.log("Sending envelope to students:", students)
 
 
-  
+
 
   const baseUri = teacher_data.docusign_baseUri
   const accountId = teacher_data.docusign_account_id
@@ -631,7 +655,7 @@ async function createAllDocusignEnvelopes(document_id) {
 
   const envelopesApi = new docusign.EnvelopesApi(apiClient);
 
-  const envelope_ids = {}
+  const docusign_envelopes = []
 
   for (const student of students) {
     try {
@@ -647,16 +671,23 @@ async function createAllDocusignEnvelopes(document_id) {
       const studentData = studentDoc.data()
       console.log(`Document for ${student}:`, studentData);
 
-      const envelope_id = await createDocusignEnvelope(envelopesApi, baseUri, accountId, studentData.email, studentData.name, studentData.parentEmail, studentData.parentName)
+      const envelope_id = await createDocusignEnvelope(envelopesApi, accountId, studentData.email, studentData.name, studentData.parentEmail, studentData.parentName)
 
-      envelope_ids[student] = envelope_id
+      const envelope = {
+        name: student,
+        envelope_id: envelope_id,
+        studentHasSigned: false,
+        parentHasSigned: false
+      }
+
+      docusign_envelopes.push(envelope)
     } catch (error) {
       console.error(`Error fetching document for student ${student}:`, error);
     }
   }
 
   await db.collection("documents").doc(document_id).update({
-    recipients: envelope_ids
+    docusign_envelopes: docusign_envelopes
   })
   
 
