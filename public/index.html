@@ -58,48 +58,93 @@
       <!-- Dashboard Section -->
       <section id="dashboardSection" class="section dashboard-section hidden">
         <nav class="dashboard-nav">
-          <div class="nav-left">
-            <h2>Welcome, <span id="teacherName"></span></h2>
-          </div>
-          <div class="nav-right">
-            <button id="canvasAuthBtn" class="nav-button">
-              <svg class="button-icon canvas-icon" viewBox="0 0 24 24">
-                <path
-                  d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                />
-              </svg>
-              Connect Canvas
-            </button>
-            <button id="docusignAuth" class="nav-button">
-              <svg class="button-icon docusign-icon" viewBox="0 0 24 24">
-                <path
-                  d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                />
-              </svg>
-              Connect DocuSign
-            </button>
-            <div class="nav-right">
-              <button id="refreshCoursesBtn" class="nav-button">
+          <div class="nav-content">
+            <h2 class="welcome-text">Welcome teacher</h2>
+            <div class="nav-actions">
+              <button class="nav-button connect-button" id="canvasAuthBtn">
                 <svg class="button-icon" viewBox="0 0 24 24">
-                  <path
-                    d="M4 4V9H4.58L5.39 7.44C7.31 4.03 11.25 2.2 15 3.1C18.75 4 21.58 7.2 22 11.12M20 20V15H19.42L18.61 16.56C16.69 19.97 12.75 21.8 9 20.9C5.25 20 2.42 16.8 2 12.88"
-                  />
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+                Connect Canvas
+              </button>
+              <button class="nav-button connect-button">
+                <svg class="button-icon" viewBox="0 0 24 24">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+                Connect DocuSign
+              </button>
+              <button class="nav-button refresh-button" id="refreshCoursesBtn">
+                <svg class="button-icon" viewBox="0 0 24 24">
+                  <path d="M4 4v5h.582l.814-1.56C7.308 4.03 11.25 2.2 15 3.1c3.75.9 6.583 4.1 7 8.02M20 20v-5h-.582l-.814 1.56C16.692 19.97 12.75 21.8 9 20.9c-3.75-.9-6.583-4.1-7-8.02"/>
                 </svg>
                 Refresh Courses
               </button>
-              <!-- Your existing buttons -->
+              <button class="nav-button logout-button" id="logout">
+                <svg class="button-icon" viewBox="0 0 24 24">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                </svg>
+                Logout
+              </button>
             </div>
-            <button id="logout" class="nav-button logout-button">
-              <svg class="button-icon logout-icon" viewBox="0 0 24 24">
-                <path
-                  d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
-                />
-              </svg>
-              Logout
-            </button>
           </div>
         </nav>
-
+        <div class="dashboard-stats">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <svg viewBox="0 0 24 24" class="icon">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 id="activeCourses">0</h3>
+                <p>Active Courses</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">
+                <svg viewBox="0 0 24 24" class="icon">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 id="totalStudents">0</h3>
+                <p>Total Students</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">
+                <svg viewBox="0 0 24 24" class="icon">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 id="pendingSignatures">0</h3>
+                <p>Pending Signatures</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">
+                <svg viewBox="0 0 24 24" class="icon">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 id="completedForms">0</h3>
+                <p>Completed Forms</p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="dashboard-content">
           <div class="courses-grid" id="coursesList">
             <!-- Courses will be dynamically added here -->
@@ -166,25 +211,28 @@
 
     <script></script>
     <!-- Add this before closing </body> tag -->
-    <script src="animations.js"></script>
-    <script src="app.js"></script>
+    
     <div id="uploadConfirmModal" class="modal hidden">
-  <div class="modal-content">
-    <h3>Confirm Upload</h3>
-    <div class="upload-details">
-      <p>File: <span id="confirmFileName"></span></p>
-      <p>Due Date: <span id="confirmDueDate"></span></p>
+      <div class="modal-content">
+        <h3>Confirm Upload</h3>
+        <div class="upload-details">
+          <p>File: <span id="confirmFileName"></span></p>
+          <p>Due Date: <span id="confirmDueDate"></span></p>
+          <p>Donation Amount: <span id="confirmDonation"></span></p>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="secondary-button" id="cancelUpload">
+            Cancel
+          </button>
+          <button type="button" class="primary-button" onclick="processUpload()">
+            <span>Confirm Upload</span>
+            <div class="button-loader hidden"></div>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="modal-buttons">
-      <button type="button" class="secondary-button" id="cancelUpload">
-        Cancel
-      </button>
-      <button type="button" class="primary-button" id="confirmUpload">
-        <span>Confirm Upload</span>
-        <div class="button-loader hidden"></div>
-      </button>
-    </div>
-  </div>
+  <script src="animations.js"></script>
+  <script src="app.js"></script>
 </div>
   </body>
 </html>
