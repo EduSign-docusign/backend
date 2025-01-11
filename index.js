@@ -650,77 +650,149 @@ async function createDocusignEnvelope(
   parentName,
   donationAmount
 ) {
-  const envelopeDefinition = new docusign.EnvelopeDefinition();
-  envelopeDefinition.emailSubject = `Parents & Students, please sign this document`;
+  // Convert donation amount to cents and validate minimum amount
+  const MINIMUM_PAYMENT_AMOUNT = 0.50;
+  if (donationAmount > 0 && donationAmount < MINIMUM_PAYMENT_AMOUNT) {
+    throw new Error(`Payment amount must be at least $${MINIMUM_PAYMENT_AMOUNT}`);
+  }
+  const donationAmountCents = Math.round(donationAmount * 100);
 
+  // Create envelope definition
+  const envelopeDefinition = new docusign.EnvelopeDefinition();
+  envelopeDefinition.emailSubject = "Please sign this permission slip and process optional donation";
+
+  // Add the document
   const documentBytes = fs.readFileSync(path.resolve("./ps.pdf"));
   const documentBase64 = documentBytes.toString("base64");
-
   const document = new docusign.Document();
   document.documentBase64 = documentBase64;
-  document.name = "TEST PERMISSION SLIP";
+  document.name = "Permission Slip";
   document.fileExtension = "pdf";
   document.documentId = "1";
   envelopeDefinition.documents = [document];
 
-  // Create parent signer with payment tab
-  const signer = new docusign.Signer();
-  signer.email = parentEmail;
-  signer.name = parentName;
-  signer.recipientId = "2";
-  signer.clientUserId = CONFIG.clientUserId;
-
-  // Add payment tab for parent
-  if (donationAmount > 0) {
-    const paymentTab = docusign.FormulaTab.constructFromObject({
-      formulaString: donationAmount.toString(),
-      paymentDetails: {
-        currencyCode: "USD",
-        gatewayAccountId: process.env.DOCUSIGN_PAYMENT_GATEWAY_ID,
-        gatewayName: "Stripe",
-        gatewayDisplayName: "Stripe",
-        lineItems: [
-          {
-            name: "Optional Donation",
-            description: "Optional donation for school activities",
-            amount: donationAmount,
-          },
-        ],
-      },
-      optional: "true",
-      documentId: "1",
-      pageNumber: "1",
-      xPosition: "100",
-      yPosition: "200",
-    });
-
-    const formulaTabs = [];
-    formulaTabs.push(paymentTab);
-
-    const tabs = docusign.Tabs.constructFromObject({
-      formulaTabs: formulaTabs,
-    });
-
-    signer.tabs = tabs;
-  }
-
-  // Create student signer
-  const signer2 = new docusign.Signer();
-  signer2.email = studentEmail;
-  signer2.name = studentName;
-  signer2.recipientId = "1";
-  signer2.clientUserId = CONFIG.clientUserId;
-
-  envelopeDefinition.recipients = new docusign.Recipients();
-  envelopeDefinition.recipients.signers = [signer, signer2];
-  envelopeDefinition.status = "sent";
-
-  console.log("Found a student! Creating an envelope with details:", JSON.stringify(envelopeDefinition))
-  const env_results = await envelopesApi.createEnvelope(accountId, {
-    envelopeDefinition,
+  // Create signature tabs for both signers
+  const parentSignHere = docusign.SignHere.constructFromObject({
+    anchorString: "/parent_sig/",  // Make sure this anchor exists in your PDF
+    anchorYOffset: "100",
+    anchorUnits: "pixels",
+    anchorXOffset: "20"
   });
 
-  return env_results.envelopeId;
+  const studentSignHere = docusign.SignHere.constructFromObject({
+    anchorString: "/student_sig/",  // Make sure this anchor exists in your PDF
+    anchorYOffset: "10",
+    anchorUnits: "pixels",
+    anchorXOffset: "20"
+  });
+
+  // Create date signed tabs
+  const parentDateSigned = docusign.DateSigned.constructFromObject({
+    anchorString: "/parent_date/",  // Make sure this anchor exists in your PDF
+    anchorYOffset: "0",
+    anchorUnits: "pixels",
+    anchorXOffset: "0"
+  });
+
+  const studentDateSigned = docusign.DateSigned.constructFromObject({
+    anchorString: "/student_date/",  // Make sure this anchor exists in your PDF
+    anchorYOffset: "0",
+    anchorUnits: "pixels",
+    anchorXOffset: "0"
+  });
+
+  // Setup payment if donation amount is greater than 0
+  let parentTabs = {
+    signHereTabs: [parentSignHere],
+    dateSignedTabs: [parentDateSigned]
+  };
+
+  if (donationAmount > 0) {
+    // Create donation amount formula tab
+    const donationFormula = docusign.FormulaTab.constructFromObject({
+      tabLabel: "donation_amount",
+      formula: donationAmountCents.toString(),
+      roundDecimalPlaces: "0",
+      hidden: "true",
+      required: "true",
+      locked: "true",
+      documentId: "1",
+      pageNumber: "1"
+    });
+
+    // Create payment line item
+    const donationLineItem = docusign.PaymentLineItem.constructFromObject({
+      name: "School Activity Donation",
+      description: "Optional donation to support school activities",
+      amountReference: "donation_amount"
+    });
+
+    // Create payment details
+    const paymentDetails = docusign.PaymentDetails.constructFromObject({
+      gatewayAccountId: process.env.DOCUSIGN_PAYMENT_GATEWAY_ID,
+      currencyCode: "USD",
+      gatewayName: "Stripe",
+      gatewayDisplayName: "Stripe",
+      lineItems: [donationLineItem]
+    });
+
+    // Create payment formula tab
+    const paymentFormulaTab = docusign.FormulaTab.constructFromObject({
+      tabLabel: "payment",
+      formula: "[donation_amount]",
+      roundDecimalPlaces: "0",
+      paymentDetails: paymentDetails,
+      hidden: "true",
+      required: "true",
+      locked: "false",
+      documentId: "1",
+      pageNumber: "1",
+      xPosition: "0",
+      yPosition: "0"
+    });
+
+    // Add formula tabs to parent's tabs
+    parentTabs.formulaTabs = [parentSignHere, donationFormula, paymentFormulaTab];
+  }
+
+  // Create parent signer
+  const parentSigner = docusign.Signer.constructFromObject({
+    email: parentEmail,
+    name: parentName,
+    recipientId: "2",
+    routingOrder: "2",  // Parent signs second
+    clientUserId: CONFIG.clientUserId,
+    tabs: parentTabs
+  });
+
+  // Create student signer
+  const studentSigner = docusign.Signer.constructFromObject({
+    email: studentEmail,
+    name: studentName,
+    recipientId: "1",
+    routingOrder: "1",  // Student signs first
+    clientUserId: CONFIG.clientUserId,
+    tabs: {
+      signHereTabs: [studentSignHere],
+      dateSignedTabs: [studentDateSigned]
+    }
+  });
+
+  // Add recipients to envelope
+  envelopeDefinition.recipients = new docusign.Recipients();
+  envelopeDefinition.recipients.signers = [parentSigner, studentSigner];
+
+  // Set envelope status to "sent"
+  envelopeDefinition.status = "sent";
+
+  // Create envelope
+  const results = await envelopesApi.createEnvelope(accountId, {
+    envelopeDefinition: envelopeDefinition
+  });
+
+  console.log("LETS FUCKING GO IT WORKED!!")
+
+  return results.envelopeId;
 }
 
 //document_id is a Firebase document id
@@ -733,6 +805,7 @@ async function getTeacherData(teacher_id) {
     .collection("teachers")
     .doc(teacher_id)
     .get();
+    
   if (!teacher_document.exists) {
     throw { status: 404, message: "Teacher not found" };
   }
@@ -749,7 +822,7 @@ async function getTeacherData(teacher_id) {
 
   try {
     accountInfo = await getUserInfo(access_token);
-    await db.collection("teachers").doc(firestore_data.teacher_id).update({
+    await db.collection("teachers").doc(teacher_id).update({
       docusign_baseUri: accountInfo.baseUri,
       docusign_account_id: accountInfo.accountId,
     });
