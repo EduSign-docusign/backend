@@ -77,7 +77,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "No file provided" });
     }
 
-    const { courseId, courseName, teacherId, dueDate } = req.body;
+    const { courseId, courseName, teacherId, dueDate, donationAmount } = req.body;
 
     if (!dueDate) {
       return res.status(400).json({ error: "Due date is required" });
@@ -101,19 +101,16 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     blobStream.on("error", (err) => {
       console.error("Upload error:", err);
-      res
-        .status(500)
-        .json({ error: "Failed to upload file", details: err.message });
+      res.status(500).json({ error: "Failed to upload file", details: err.message });
     });
 
     blobStream.on("finish", async () => {
-      // Make the file public
       try {
         await fileBlob.makePublic();
 
         const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
 
-        // Save document reference in Firestore with due date
+        // Save document reference in Firestore with due date and donation amount
         const db = getFirestore();
         const docRef = await db.collection("documents").add({
           course_id: courseId,
@@ -124,6 +121,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
           uploaded_at: FieldValue.serverTimestamp(),
           due_date: new Date(dueDate),
           status: "uploaded",
+          donationAmount: parseFloat(donationAmount), // Add donation amount
         });
 
         // Handle DocuSign envelopes
@@ -134,6 +132,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
           documentId: docRef.id,
           fileUrl: publicUrl,
           dueDate: dueDate,
+          donationAmount: parseFloat(donationAmount) || 0,
         });
       } catch (err) {
         console.error("Error after upload:", err);
@@ -716,6 +715,7 @@ async function createDocusignEnvelope(
   envelopeDefinition.recipients.signers = [signer, signer2];
   envelopeDefinition.status = "sent";
 
+  console.log("Found a student! Creating an envelope with details:", JSON.stringify(envelopeDefinition))
   const env_results = await envelopesApi.createEnvelope(accountId, {
     envelopeDefinition,
   });
@@ -792,6 +792,7 @@ async function createAllDocusignEnvelopes(document_id) {
     .collection("documents")
     .doc(document_id)
     .get();
+
   const firestore_data = firestore_document.data();
   const course_id = firestore_data.course_id;
   const teacher_id = firestore_data.teacher_id;
@@ -819,6 +820,7 @@ async function createAllDocusignEnvelopes(document_id) {
       const querySnapshot = await db
         .collection("users")
         .where("name", "==", student)
+        .where("type", "==", "student")        
         .get();
 
       if (querySnapshot.empty) {

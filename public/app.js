@@ -450,55 +450,71 @@ document.addEventListener("DOMContentLoaded", function () {
       console.log("No upload data found");
       return;
     }
-  
-    const confirmButton = document.querySelector("#uploadConfirmModal .primary-button");
+
+    const confirmButton = document.querySelector(
+      "#uploadConfirmModal .primary-button"
+    );
     const modal = document.getElementById("uploadConfirmModal");
-  
+
     try {
       window.appAnimations?.toggleLoadingButton?.(confirmButton, true);
-  
+
       const formData = new FormData();
       formData.append("file", currentUploadData.file);
       formData.append("courseId", currentUploadData.courseId);
       formData.append("courseName", currentUploadData.courseName);
       formData.append("teacherId", auth.currentUser.uid);
       formData.append("dueDate", currentUploadData.dueDate);
-      formData.append("donationAmount", currentUploadData.donationAmount);
-  
-      console.log("Sending upload request...");
+      formData.append(
+        "donationAmount",
+        currentUploadData.donationAmount.toString()
+      ); // Ensure donation amount is included
+
+      console.log(
+        "Sending upload request with donation amount:",
+        currentUploadData.donationAmount
+      );
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
-  
+
       if (!response.ok) {
         throw new Error("Upload failed");
       }
-  
+
       const result = await response.json();
       console.log("Upload successful:", result);
-  
+
       // Success notification
-      window.appAnimations?.showNotification?.("Permission slip uploaded successfully!", "success");
-  
+      window.appAnimations?.showNotification?.(
+        "Permission slip uploaded successfully!",
+        "success"
+      );
+
       // Reset form
-      const fileInput = document.getElementById(`file-${currentUploadData.courseId}`);
-      const dueDateInput = document.getElementById(`due-date-${currentUploadData.courseId}`);
-      const donationInput = document.getElementById(`donation-${currentUploadData.courseId}`);
-      
+      const fileInput = document.getElementById(
+        `file-${currentUploadData.courseId}`
+      );
+      const dueDateInput = document.getElementById(
+        `due-date-${currentUploadData.courseId}`
+      );
+      const donationInput = document.getElementById(
+        `donation-${currentUploadData.courseId}`
+      );
+
       fileInput.value = "";
       dueDateInput.value = "";
       donationInput.value = "";
-  
+
       // Hide modal
       modal.classList.add("hidden");
-  
+
       // Reload the courses to show updated documents
       await loadCourses(auth.currentUser.uid);
-  
+
       // Redirect to DocuSign auth
       window.location.href = `/api/teacher-auth?teacher_id=${auth.currentUser.uid}`;
-  
     } catch (error) {
       console.error("Error uploading file:", error);
       window.appAnimations?.showNotification?.(error.message, "error");
@@ -514,41 +530,53 @@ document.addEventListener("DOMContentLoaded", function () {
     const modal = document.getElementById("uploadConfirmModal");
     const confirmBtn = document.getElementById("confirmUpload");
     const cancelBtn = document.getElementById("cancelUpload");
-  
+
     // Confirm button handler
     confirmBtn.addEventListener("click", async () => {
       await processUpload();
-      
+
       // After successful upload, redirect to DocuSign auth
       if (auth.currentUser) {
         window.location.href = `/api/teacher-auth?teacher_id=${auth.currentUser.uid}`;
       }
     });
-  
+
     // Cancel button handler
     cancelBtn.addEventListener("click", () => {
       modal.classList.add("hidden");
       if (currentUploadData) {
-        const fileInput = document.getElementById(`file-${currentUploadData.courseId}`);
-        const dueDateInput = document.getElementById(`due-date-${currentUploadData.courseId}`);
-        const donationInput = document.getElementById(`donation-${currentUploadData.courseId}`);
-        
+        const fileInput = document.getElementById(
+          `file-${currentUploadData.courseId}`
+        );
+        const dueDateInput = document.getElementById(
+          `due-date-${currentUploadData.courseId}`
+        );
+        const donationInput = document.getElementById(
+          `donation-${currentUploadData.courseId}`
+        );
+
         fileInput.value = "";
         dueDateInput.value = "";
         donationInput.value = "";
         currentUploadData = null;
       }
     });
-  
+
     // Click outside modal handler
     modal.addEventListener("click", (e) => {
       if (e.target === modal) {
         modal.classList.add("hidden");
         if (currentUploadData) {
-          const fileInput = document.getElementById(`file-${currentUploadData.courseId}`);
-          const dueDateInput = document.getElementById(`due-date-${currentUploadData.courseId}`);
-          const donationInput = document.getElementById(`donation-${currentUploadData.courseId}`);
-          
+          const fileInput = document.getElementById(
+            `file-${currentUploadData.courseId}`
+          );
+          const dueDateInput = document.getElementById(
+            `due-date-${currentUploadData.courseId}`
+          );
+          const donationInput = document.getElementById(
+            `donation-${currentUploadData.courseId}`
+          );
+
           fileInput.value = "";
           dueDateInput.value = "";
           donationInput.value = "";
