@@ -1,5 +1,20 @@
 const firebaseAdmin = require("firebase-admin");
 
+function getPathFromFirebaseStorageUrl(url) {
+  console.log("Parsing URL:", url)
+  const parsedUrl = new URL(url);
+
+  let path = parsedUrl.pathname.slice(1);
+  console.log("Path", path)
+
+  const firstSlashIndex = path.indexOf('/');
+  if (firstSlashIndex !== -1) {
+    path = path.slice(firstSlashIndex + 1); // Get the path after the first "/"
+  }
+
+  return path;
+}
+
 function extractToken(req, res) {
   const authorizationHeader = req.headers["authorization"];
 
@@ -38,4 +53,5 @@ async function verifyToken(token) {
 module.exports = {
   verifyToken,
   extractToken,
+  getPathFromFirebaseStorageUrl
 };

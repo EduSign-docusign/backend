@@ -445,6 +445,13 @@ document.addEventListener("DOMContentLoaded", function () {
       return false;
     }
   }
+
+  function cancelUpload() {
+    console.log("CANCELLING HEREEEEEE")
+    const modal = document.getElementById("uploadConfirmModal");
+    modal.classList.add("hidden");
+  }
+
   async function processUpload() {
     if (!currentUploadData) {
       console.log("No upload data found");
@@ -523,6 +530,8 @@ document.addEventListener("DOMContentLoaded", function () {
       currentUploadData = null;
     }
   }
+
+  window.cancelUpload = cancelUpload
   window.processUpload = processUpload;
 
   // Add event listeners for the confirmation modal
@@ -560,6 +569,10 @@ document.addEventListener("DOMContentLoaded", function () {
         donationInput.value = "";
         currentUploadData = null;
       }
+
+      console.log("cancel clicked")
+      window.appAnimations?.toggleLoadingButton?.(confirmButton, false);
+
     });
 
     // Click outside modal handler
