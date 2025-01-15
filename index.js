@@ -9,6 +9,7 @@ const { CONFIG, backendURL } = require("./config");
 const teacherService = require("./teacherService");
 const studentService = require("./studentService");
 const twilioService = require("./twilioService");
+const parentService = require("./parentService")
 
 const app = express();
 
@@ -40,9 +41,14 @@ app.get("/api/getSigningURL", studentService.getSigningURL);
 app.get("/api/signingComplete", studentService.signingComplete);
 app.get("/api/getDocumentSummary", studentService.getDocumentSummary);
 app.get("/api/getDocuments", studentService.getDocuments);
+app.get("/api/getUser", studentService.getUser);
+
+//Parent-related routes
+app.post("/api/addChild", parentService.addChild)
+app.delete("/api/removeChild", parentService.removeChild)
 
 // Twilio routes
-app.post("/trigger-reminder-calls/:documentId", twilioService.remindParents);
+app.post("/api/trigger-reminder-calls/:documentId", twilioService.remindParents);
 
 
 // Start server

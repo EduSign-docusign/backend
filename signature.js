@@ -17,6 +17,55 @@ class SignatureChecker {
     schedule.scheduleJob("0 14 * * *", () => this.checkSignaturesAndCall());
   }
 
+  // Send SMS to parent
+  async sendParentSMS(parentPhone, studentName, courseName, dueDate) {
+    try {
+        // Ensure phone number is in E.164 format
+        const formattedPhone = parentPhone.startsWith('+') 
+            ? parentPhone 
+            : `+1${parentPhone.replace(/\D/g, '')}`;
+
+        // Convert Firestore Timestamp to JavaScript Date (unix to words)
+        dueDate = Date(dueDate);
+
+        // Convert to words
+        const dueDateObj = dueDate.toDate ? dueDate.toDate() : new Date(dueDate);
+
+        // Check if the date is valid
+        if (isNaN(dueDateObj.getTime())) {
+            console.error('Invalid date:', dueDate);
+            throw new Error('Invalid date format');
+        }
+
+        const formattedDate = dueDateObj.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        const message = await this.twilioClient.messages.create({
+            body: `Reminder: ${studentName}'s permission slip for ${courseName} is due by ${formattedDate}. Please sign it. Thank you!`,
+            from: this.twilioPhoneNumber,
+            to: formattedPhone,
+        });
+
+        console.log(JSON.stringify(message))
+
+        console.log(`Successfully sent SMS to parent of ${studentName} at ${formattedPhone}`);
+        return true;
+    } catch (error) {
+        console.error('Date details:', {
+            originalDueDate: dueDate,
+            originalType: typeof dueDate,
+            convertedDate: dueDate.toDate ? dueDate.toDate() : new Date(dueDate),
+            isValidDate: dueDate.toDate ? !isNaN(dueDate.toDate().getTime()) : !isNaN(new Date(dueDate).getTime())
+        });
+
+        console.error(`Failed to send SMS to parent of ${studentName}:`, error);
+        return false;
+    }
+}
+
   // Make phone call to parent
   async makeParentCall(parentPhone, studentName, courseName, dueDate) {
     try {
@@ -25,11 +74,10 @@ class SignatureChecker {
             ? parentPhone 
             : `+1${parentPhone.replace(/\D/g, '')}`;
 
-        // Convert Firestore Timestamp to JavaScript Date (unix to words) in unique method using module to make words
-
+        // Convert Firestore Timestamp to JavaScript Date (unix to words)
         dueDate = Date(dueDate);
 
-        // convert to words
+        // Convert to words
         const dueDateObj = dueDate.toDate ? dueDate.toDate() : new Date(dueDate);
 
         // Check if the date is valid
@@ -76,7 +124,7 @@ class SignatureChecker {
     }
 }
 
-  // Check document signatures and trigger calls
+  // Check document signatures and trigger calls and SMS
   async checkSignaturesAndCall() {
     const now = new Date();
     const twoDaysFromNow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
@@ -116,9 +164,17 @@ class SignatureChecker {
                   documentData.due_date
                 );
 
+                const smsSuccessful = await this.sendParentSMS(
+                  studentData.parentPhone,
+                  studentData.name,
+                  documentData.course_name,
+                  documentData.due_date
+                );
+
                 callResults.push({
                   studentName: studentData.name,
-                  success: callSuccessful,
+                  callSuccess: callSuccessful,
+                  smsSuccess: smsSuccessful,
                   timestamp: new Date(),
                   documentId: doc.id,
                 });
@@ -127,7 +183,8 @@ class SignatureChecker {
                 await this.logCallAttempt(doc.id, {
                   studentName: studentData.name,
                   parentPhone: studentData.parentPhone,
-                  success: callSuccessful,
+                  callSuccess: callSuccessful,
+                  smsSuccess: smsSuccessful,
                   timestamp: new Date(),
                 });
 
@@ -162,7 +219,7 @@ class SignatureChecker {
     }
   }
 
-  // Manual trigger for reminder calls for a specific document
+  // Manual trigger for reminder calls to PARENT for all students in a specific document
   async triggerReminderCalls(documentId) {
     try {
       const doc = await this.db.collection("documents").doc(documentId).get();
@@ -205,9 +262,17 @@ class SignatureChecker {
                   documentData.due_date
                 );
 
+                const smsSuccessful = await this.sendParentSMS(
+                  studentData.parentPhone,
+                  studentData.name,
+                  documentData.course_name,
+                  documentData.due_date
+                );
+
                 callResults.push({
                   studentName: studentData.name,
-                  success: callSuccessful,
+                  callSuccess: callSuccessful,
+                  smsSuccess: smsSuccessful,
                   timestamp: new Date(),
                   parentPhone: studentData.parentPhone,
                 });
@@ -215,7 +280,8 @@ class SignatureChecker {
                 await this.logCallAttempt(documentId, {
                   studentName: studentData.name,
                   parentPhone: studentData.parentPhone,
-                  success: callSuccessful,
+                  callSuccess: callSuccessful,
+                  smsSuccess: smsSuccessful,
                   timestamp: new Date(),
                 });
 

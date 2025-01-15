@@ -510,7 +510,7 @@ async function createAllDocusignEnvelopes(document_id) {
       const envelope = {
         name: student,
         envelope_id: envelope_id,
-        firestore_id: studentDoc.id,
+        student_id: studentDoc.id,
         studentHasSigned: false,
         parentHasSigned: false,
         hasDonated: false,

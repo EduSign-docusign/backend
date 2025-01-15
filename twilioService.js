@@ -23,6 +23,7 @@ async function remindParents(req, res) {
     }
 }
 
+
 module.exports = {
     remindParents
 }

@@ -40,6 +40,7 @@ async function getSigningURL(req, res) {
     
         const student_document = await db.collection("users").doc(student_id).get();
         const student_data = student_document.data();
+
         
         //Requires teacher authentication to create the embedded signing, uses saved teacher token in FireStore
         const teacher_id = firestore_data.teacher_id;
@@ -76,7 +77,7 @@ async function getSigningURL(req, res) {
         }
     
         const envelope_id = getEnvelopeIDByStudentName(student_data.name, firestore_data.docusign_envelopes);
-    
+        
         const viewRequest = makeViewRequest(email, name, envelope_id, document_id);
     
         const url = await envelopesApi.createRecipientView(
@@ -197,6 +198,16 @@ async function getDocumentSummary(req, res) {
       
 }
 
+function getStatusOfEnvelope(envelope) {
+  if (!(envelope.studentHasSigned)) {
+    return "Pending Student"
+  } else if (!envelope.parentHasSigned) {
+    return "Pending Parent"
+  } else {
+    return "Completed"
+  }
+}
+
 async function getDocuments(req, res) {
   const { user_id } = req.query;
 
@@ -223,19 +234,20 @@ async function getDocuments(req, res) {
       
   querySnapshot.forEach((doc) => {
       //extracting status because we dont want it
-      const { status, ...data } = doc.data();
+      const { status, docusign_envelopes, ...data } = doc.data();
       const course = data.course_name;
-      
-      if (!result[course]) {
-        result[course] = [];
-      }
 
-      const envelopes = data.docusign_envelopes || [];
+      const envelopes = docusign_envelopes || [];
       for (const envelope of envelopes) {
         if (studentNames.includes(envelope.name)) {
+          if (!result[course]) {
+            result[course] = [];
+          }
+          
           result[course].push({ 
             id: doc.id,
-            status: envelope.studentHasSigned ? "Pending" : "Completed",
+            status: getStatusOfEnvelope(envelope),
+            ...envelope,
             ...data 
           });
         }
@@ -247,9 +259,19 @@ async function getDocuments(req, res) {
   });
 }
 
+async function getUser(req, res) {
+  const { user_id } = req.query;
+
+  const userDoc = await db.collection("users").doc(user_id).get()
+  const userData = userDoc.data();
+
+  res.json({ user: userData })
+}
+
 module.exports = {
     getSigningURL,
     signingComplete,
     getDocumentSummary,
-    getDocuments
+    getDocuments,
+    getUser
 }
