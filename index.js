@@ -42,6 +42,8 @@ app.get("/api/signingComplete", studentService.signingComplete);
 app.get("/api/getDocumentSummary", studentService.getDocumentSummary);
 app.get("/api/getDocuments", studentService.getDocuments);
 app.get("/api/getUser", studentService.getUser);
+app.get("/api/getFamilyMembers", studentService.getFamilyMembers);
+app.post("/api/uploadPFP", upload.single("file"), studentService.uploadPFP);
 
 //Parent-related routes
 app.post("/api/addChild", parentService.addChild)

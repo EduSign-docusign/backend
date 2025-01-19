@@ -14,10 +14,10 @@ const { getTeacherData } = require("./teacherService");
 const { db, bucket } = require("./firebase");
 
 
-function makeViewRequest(email, name, envelope_id, document_id) {
+function makeViewRequest(email, name, type, envelope_id, document_id) {
   let viewRequest = new docusign.RecipientViewRequest();
 
-  viewRequest.returnUrl = `${backendURL}/api/signingComplete?document_id=${document_id}&envelope_id=${envelope_id}`;
+  viewRequest.returnUrl = `${backendURL}/api/signingComplete?document_id=${document_id}&envelope_id=${envelope_id}&type=${type}`;
 
   viewRequest.authenticationMethod = "none";
 
@@ -78,7 +78,7 @@ async function getSigningURL(req, res) {
     
         const envelope_id = getEnvelopeIDByStudentName(student_data.name, firestore_data.docusign_envelopes);
         
-        const viewRequest = makeViewRequest(email, name, envelope_id, document_id);
+        const viewRequest = makeViewRequest(email, name, type, envelope_id, document_id);
     
         const url = await envelopesApi.createRecipientView(
           teacher_data.docusign_account_id,
@@ -99,10 +99,16 @@ async function getSigningURL(req, res) {
 }
 
 
-function markStudentHasSigned(envelope_id, docusign_envelopes) {
+function markHasSigned(type, envelope_id, docusign_envelopes) {
     for (let envelope of docusign_envelopes) {
       if (envelope.envelope_id === envelope_id) {
-        envelope.studentHasSigned = true;
+        if (type == "student") {
+          envelope.studentHasSigned = true;
+        } else if (type == "parent") {
+          envelope.parentHasSigned = true
+        } else {
+          throw new Error("Type must be student or parent.")
+        }
         break;
       }
     }
@@ -111,7 +117,7 @@ function markStudentHasSigned(envelope_id, docusign_envelopes) {
 
 
 async function signingComplete(req, res) {
-    const { document_id, envelope_id } = req.query;
+    const { document_id, envelope_id, type } = req.query;
 
   try {
     const firestore_document = db.collection("documents").doc(document_id);
@@ -121,7 +127,8 @@ async function signingComplete(req, res) {
  
 
     await firestore_document.update({
-      docusign_envelopes: markStudentHasSigned(
+      docusign_envelopes: markHasSigned(
+        type,
         envelope_id,
         firestore_data.docusign_envelopes
       ),
@@ -208,6 +215,30 @@ function getStatusOfEnvelope(envelope) {
   }
 }
 
+async function getFamilyMembers(req, res) {
+  const { user_id } = req.query;
+
+  const userDoc = await db.collection("users").doc(user_id).get()
+  const userData = userDoc.data()
+
+  if (!userData) res.json({ members: []})
+
+  if (!(userData.type == "student")) {
+    res.status(403).json({ success: false, message: "Only students can use this endpoint."})
+  }
+
+  const parentDoc = await db.collection("users").doc(userData.parentID).get()
+  const { children, ...parentData }= parentDoc.data()
+  const members = children.filter(
+    (child) =>
+      child.name !== userData.name && child.invite_pending === false
+  );
+
+  members.push(parentData)
+
+  return res.json({ members });
+}
+
 async function getDocuments(req, res) {
   const { user_id } = req.query;
 
@@ -268,10 +299,75 @@ async function getUser(req, res) {
   res.json({ user: userData })
 }
 
+async function uploadPFP(req, res) {
+  try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+  
+      const { user_id } = req.query;
+  
+      const file = req.file;
+      
+      console.log("Made it here! File and user_id", user_id, file)
+      const timestamp = Date.now();
+      const filename = `pfps/${user_id}/${timestamp}_${file.originalname}`;
+  
+      const fileBlob = bucket.file(filename);
+  
+      const blobStream = fileBlob.createWriteStream({
+        resumable: false,
+        metadata: {
+          contentType: file.mimetype,
+        },
+      });
+  
+      blobStream.on("error", (err) => {
+        console.error("Upload error:", err);
+        res.status(500).json({ error: "Failed to upload file", details: err.message });
+      });
+  
+      blobStream.on("finish", async () => {
+        try {
+          await fileBlob.makePublic();
+  
+          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+  
+          const docRef = await db.collection("users").doc(user_id).update({
+            pfp_url: publicUrl
+          });
+
+          res.status(200).json({
+            success: true,
+            documentId: docRef.id,
+            pfp_url: publicUrl,
+          });
+
+        } catch (err) {
+          console.error("Error after upload:", err);
+          res.status(500).json({
+            error: "Failed to process file after upload",
+            details: err.message,
+          });
+        }
+      });
+  
+      blobStream.end(file.buffer);
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({
+        error: "Failed to process PFP upload",
+        details: error.message,
+      });
+    }
+}
+
 module.exports = {
     getSigningURL,
     signingComplete,
     getDocumentSummary,
     getDocuments,
-    getUser
+    getUser,
+    uploadPFP,
+    getFamilyMembers
 }

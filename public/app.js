@@ -31,6 +31,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const canvasTokenModal = document.getElementById("canvasTokenModal");
   const canvasTokenForm = document.getElementById("canvasTokenForm");
   const cancelCanvasToken = document.getElementById("cancelCanvasToken");
+  const docusignAuthBtn = document.getElementById("docusignAuthBtn")
 
   // Auth toggle functionality
   loginToggle.addEventListener("click", () => {
@@ -94,6 +95,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // Canvas Modal Handlers
   canvasAuthBtn.addEventListener("click", () => {
     canvasTokenModal.classList.remove("hidden");
+  });
+
+  docusignAuthBtn.addEventListener("click", () => {
+    window.location.href = `/api/teacher-auth?teacher_id=${auth.currentUser.uid}`
   });
 
   cancelCanvasToken.addEventListener("click", () => {
