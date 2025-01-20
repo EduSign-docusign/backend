@@ -215,29 +215,59 @@ function getStatusOfEnvelope(envelope) {
   }
 }
 
+
 async function getFamilyMembers(req, res) {
-  const { user_id } = req.query;
+  try {
+    const { user_id } = req.query;
 
-  const userDoc = await db.collection("users").doc(user_id).get()
-  const userData = userDoc.data()
+    // Fetch the user document
+    const userDoc = await db.collection("users").doc(user_id).get();
+    const userData = userDoc.data();
 
-  if (!userData) res.json({ members: []})
+    if (!userData) {
+      return res.json({ members: [] });
+    }
 
-  if (!(userData.type == "student")) {
-    res.status(403).json({ success: false, message: "Only students can use this endpoint."})
+    let children;
+    const members = [];
+
+    if (userData.type === "student") {
+      const parentDoc = await db.collection("users").doc(userData.parentID).get();
+      const { children: parentsChildren, ...parentData } = parentDoc.data();
+
+      children = parentsChildren
+
+      members.push(parentData);
+
+    } else if (userData.type === "parent") {
+      children = userData.children
+    } else {
+      throw new Error("Type is not student or parent.")
+    }
+
+    children = children.filter(
+      (child) =>
+        child.name !== userData.name && child.invite_pending === false
+    );
+
+    for (const child of children) {
+      const childDoc = await db.collection("users").doc(child.id).get();
+      if (childDoc.exists) {
+        members.push(childDoc.data());
+      }
+    }
+
+    res.json(members)
+  } catch (error) {
+    console.error("Error fetching family members:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while fetching family members.",
+      details: error.message,
+    });
   }
-
-  const parentDoc = await db.collection("users").doc(userData.parentID).get()
-  const { children, ...parentData }= parentDoc.data()
-  const members = children.filter(
-    (child) =>
-      child.name !== userData.name && child.invite_pending === false
-  );
-
-  members.push(parentData)
-
-  return res.json({ members });
 }
+
 
 async function getDocuments(req, res) {
   const { user_id } = req.query;
