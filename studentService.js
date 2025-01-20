@@ -230,6 +230,7 @@ async function getFamilyMembers(req, res) {
 
     let children;
     const members = [];
+    const requests = [];
 
     if (userData.type === "student") {
       const parentDoc = await db.collection("users").doc(userData.parentID).get();
@@ -241,23 +242,37 @@ async function getFamilyMembers(req, res) {
 
     } else if (userData.type === "parent") {
       children = userData.children
+
+      const pendingChildren = children.filter(
+        (child) =>
+          child.invite_pending === true
+      );
+
+      for (const child of pendingChildren) {
+        const childDoc = await db.collection("users").doc(child.id).get();
+        if (childDoc.exists) {
+          requests.push(childDoc.data());
+        }
+      }
+  
     } else {
       throw new Error("Type is not student or parent.")
     }
 
-    children = children.filter(
+    const filteredChildren = children.filter(
       (child) =>
         child.name !== userData.name && child.invite_pending === false
     );
 
-    for (const child of children) {
+    for (const child of filteredChildren) {
       const childDoc = await db.collection("users").doc(child.id).get();
       if (childDoc.exists) {
         members.push(childDoc.data());
       }
     }
 
-    res.json(members)
+    res.json({ members: members, requests: requests })
+
   } catch (error) {
     console.error("Error fetching family members:", error);
     res.status(500).json({
