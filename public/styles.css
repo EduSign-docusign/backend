@@ -437,6 +437,8 @@ body {
 
 .document-name {
     font-weight: 500;
+    /* wrap text so it goes to next line */
+    overflow:hidden;
 }
 
 .document-due-date {

@@ -23,229 +23,232 @@ async function authorizeTeacher(req, res) {
 }
 
 async function saveTeacherDocusignToken(req, res) {
-    const { code, state } = req.query;
+  const { code, state } = req.query;
 
-    console.log("Loaded state:", JSON.stringify(state));
-    const { teacher_id } = JSON.parse(decodeURIComponent(state));
-  
-    const tokenResponse = await getDocusignToken(code);
-  
-    console.log("Got token:", JSON.stringify(tokenResponse));
-    
-    const accountInfo = await getUserInfo(tokenResponse.access_token);
-  
-    await db.collection("teachers").doc(teacher_id).update({
-      docusign_auth_token: tokenResponse.access_token,
-      docusign_refresh_token: tokenResponse.refresh_token,
-      docusign_account_id: accountInfo.accountId,
-      docusign_baseUri: accountInfo.baseUri,
-    });
-  
-    console.log("Succesfully saved token. You may return to EduSign")
-    res.redirect(backendURL)
+  console.log("Loaded state:", JSON.stringify(state));
+  const { teacher_id } = JSON.parse(decodeURIComponent(state));
+
+  const tokenResponse = await getDocusignToken(code);
+
+  console.log("Got token:", JSON.stringify(tokenResponse));
+
+  const accountInfo = await getUserInfo(tokenResponse.access_token);
+
+  await db.collection("teachers").doc(teacher_id).update({
+    docusign_auth_token: tokenResponse.access_token,
+    docusign_refresh_token: tokenResponse.refresh_token,
+    docusign_account_id: accountInfo.accountId,
+    docusign_baseUri: accountInfo.baseUri,
+  });
+
+  console.log("Succesfully saved token. You may return to EduSign");
+  res.redirect(backendURL);
 }
 
 async function getCanvasCourses(req, res) {
-    const token = req.headers.authorization;
-  
-    try {
-      const response = await axios.get(
-        "https://lgsuhsd.instructure.com/api/v1/courses",
-        {
-          headers: {
-            Authorization: token,
-          },
-        }
-      );
-      res.json(response.data);
-    } catch (error) {
-      console.error("Canvas API Error:", error.response?.data || error.message);
-      res.status(error.response?.status || 500).json({
-        error: "Failed to fetch courses from Canvas",
-      });
-    }
+  const token = req.headers.authorization;
+
+  try {
+    const response = await axios.get(
+      "https://lgsuhsd.instructure.com/api/v1/courses",
+      {
+        headers: {
+          Authorization: token,
+        },
+      }
+    );
+    res.json(response.data);
+  } catch (error) {
+    console.error("Canvas API Error:", error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: "Failed to fetch courses from Canvas",
+    });
+  }
 }
 
 async function saveCanvasCoursesAndToken(req, res) {
   const { token, teacherId } = req.body;
-  
-    try {
-      // 1. First get courses list
-      const coursesResponse = await axios.get(
-        "https://lgsuhsd.instructure.com/api/v1/courses",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+
+  try {
+    // 1. First get courses list
+    const coursesResponse = await axios.get(
+      "https://lgsuhsd.instructure.com/api/v1/courses",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const availableCourses = coursesResponse.data.filter(
+      (course) => !course.access_restricted_by_date && course.name
+    );
+
+    console.log("Available courses:", availableCourses.length);
+
+    const coursesWithStudents = await Promise.all(
+      availableCourses.map(async (course) => {
+        try {
+          const studentsResponse = await axios.get(
+            `https://lgsuhsd.instructure.com/api/v1/courses/${course.id}/users`,
+            {
+              params: {
+                enrollment_type: ["student"],
+                per_page: 100,
+              },
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          // Just get an array of names
+          const studentNames = studentsResponse.data
+            .map((student) => student.name || "")
+            .filter((name) => name); // Remove any empty names
+
+          console.log(
+            `Processed ${studentNames.length} students for course ${course.id}`
+          );
+
+          // Return course with just id, name, and array of student names
+          return {
+            id: course.id?.toString() || "",
+            name: course.name || "",
+            students: studentNames,
+          };
+        } catch (error) {
+          console.error(
+            `Error fetching students for course ${course.id}:`,
+            error.response?.data || error
+          );
+          // Return default course object on error
+          return {
+            id: course.id?.toString() || "",
+            name: course.name || "",
+            students: [],
+          };
         }
-      );
-  
-      const availableCourses = coursesResponse.data.filter(
-        (course) => !course.access_restricted_by_date && course.name
-      );
-  
-      console.log("Available courses:", availableCourses.length);
-  
-      const coursesWithStudents = await Promise.all(
-        availableCourses.map(async (course) => {
-          try {
-            const studentsResponse = await axios.get(
-              `https://lgsuhsd.instructure.com/api/v1/courses/${course.id}/users`,
-              {
-                params: {
-                  enrollment_type: ["student"],
-                  per_page: 100,
-                },
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              }
-            );
-  
-            // Just get an array of names
-            const studentNames = studentsResponse.data
-              .map((student) => student.name || "")
-              .filter((name) => name); // Remove any empty names
-  
-            console.log(
-              `Processed ${studentNames.length} students for course ${course.id}`
-            );
-  
-            // Return course with just id, name, and array of student names
-            return {
-              id: course.id?.toString() || "",
-              name: course.name || "",
-              students: studentNames,
-            };
-          } catch (error) {
-            console.error(
-              `Error fetching students for course ${course.id}:`,
-              error.response?.data || error
-            );
-            // Return default course object on error
-            return {
-              id: course.id?.toString() || "",
-              name: course.name || "",
-              students: [],
-            };
-          }
-        })
-      );
-  
-      // Filter out any invalid courses
-      const validCourses = coursesWithStudents.filter(
-        (course) =>
-          course &&
-          course.id &&
-          Array.isArray(course.students) &&
-          course.students.length > 0
-      );
-  
-      console.log("Saving courses to Firestore:", validCourses);
-  
-      await db.collection("teachers").doc(teacherId).update({
-        canvas_access_token: token,
-        courses: validCourses,
-        last_synced: FieldValue.serverTimestamp(),
-      });
-  
-      res.json({
-        success: true,
-        courses: validCourses,
-        totalCourses: validCourses.length,
-        totalStudents: validCourses.reduce(
-          (sum, course) => sum + course.students.length,
-          0
-        ),
-      });
-    } catch (error) {
-      console.error("Error saving Canvas token:", error.response?.data || error);
-      res.status(400).json({
-        error: "Invalid Canvas token or failed to fetch courses/students",
-        details: error.message,
-      });
-    }
+      })
+    );
+
+    // Filter out any invalid courses
+    const validCourses = coursesWithStudents.filter(
+      (course) =>
+        course &&
+        course.id &&
+        Array.isArray(course.students) &&
+        course.students.length > 0
+    );
+
+    console.log("Saving courses to Firestore:", validCourses);
+
+    await db.collection("teachers").doc(teacherId).update({
+      canvas_access_token: token,
+      courses: validCourses,
+      last_synced: FieldValue.serverTimestamp(),
+    });
+
+    res.json({
+      success: true,
+      courses: validCourses,
+      totalCourses: validCourses.length,
+      totalStudents: validCourses.reduce(
+        (sum, course) => sum + course.students.length,
+        0
+      ),
+    });
+  } catch (error) {
+    console.error("Error saving Canvas token:", error.response?.data || error);
+    res.status(400).json({
+      error: "Invalid Canvas token or failed to fetch courses/students",
+      details: error.message,
+    });
+  }
 }
 
 async function uploadFile(req, res) {
   try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file provided" });
-      }
-  
-      const { courseId, courseName, teacherId, dueDate, donationAmount } = req.body;
-  
-      if (!dueDate) {
-        return res.status(400).json({ error: "Due date is required" });
-      }
-  
-      const file = req.file;
-  
-      // Create a unique filename
-      const timestamp = Date.now();
-      const filename = `permission_slips/${teacherId}/${courseId}/${timestamp}_${file.originalname}`;
-  
-      // Create a new blob in the bucket and upload the file data
-      const fileBlob = bucket.file(filename);
-  
-      const blobStream = fileBlob.createWriteStream({
-        resumable: false,
-        metadata: {
-          contentType: file.mimetype,
-        },
-      });
-  
-      blobStream.on("error", (err) => {
-        console.error("Upload error:", err);
-        res.status(500).json({ error: "Failed to upload file", details: err.message });
-      });
-  
-      blobStream.on("finish", async () => {
-        try {
-          await fileBlob.makePublic();
-  
-          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-  
-          // Save document reference in Firestore with due date and donation amount
-          const docRef = await db.collection("documents").add({
-            course_id: courseId,
-            course_name: courseName,
-            file_url: publicUrl,
-            teacher_id: teacherId,
-            file_name: file.originalname,
-            uploaded_at: FieldValue.serverTimestamp(),
-            due_date: new Date(dueDate),
-            status: "uploaded",
-            donationAmount: parseFloat(donationAmount), // Add donation amount
-          });
-  
-          // Handle DocuSign envelopes
-          await createAllDocusignEnvelopes(docRef.id);
-  
-          res.status(200).json({
-            success: true,
-            documentId: docRef.id,
-            fileUrl: publicUrl,
-            dueDate: dueDate,
-            donationAmount: parseFloat(donationAmount) || 0,
-          });
-        } catch (err) {
-          console.error("Error after upload:", err);
-          res.status(500).json({
-            error: "Failed to process file after upload",
-            details: err.message,
-          });
-        }
-      });
-  
-      blobStream.end(file.buffer);
-    } catch (error) {
-      console.error("Upload error:", error);
-      res.status(500).json({
-        error: "Failed to process file upload",
-        details: error.message,
-      });
+    if (!req.file) {
+      return res.status(400).json({ error: "No file provided" });
     }
+
+    const { courseId, courseName, teacherId, dueDate, donationAmount } =
+      req.body;
+
+    if (!dueDate) {
+      return res.status(400).json({ error: "Due date is required" });
+    }
+
+    const file = req.file;
+
+    // Create a unique filename
+    const timestamp = Date.now();
+    const filename = `permission_slips/${teacherId}/${courseId}/${timestamp}_${file.originalname}`;
+
+    // Create a new blob in the bucket and upload the file data
+    const fileBlob = bucket.file(filename);
+
+    const blobStream = fileBlob.createWriteStream({
+      resumable: false,
+      metadata: {
+        contentType: file.mimetype,
+      },
+    });
+
+    blobStream.on("error", (err) => {
+      console.error("Upload error:", err);
+      res
+        .status(500)
+        .json({ error: "Failed to upload file", details: err.message });
+    });
+
+    blobStream.on("finish", async () => {
+      try {
+        await fileBlob.makePublic();
+
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+
+        // Save document reference in Firestore with due date and donation amount
+        const docRef = await db.collection("documents").add({
+          course_id: courseId,
+          course_name: courseName,
+          file_url: publicUrl,
+          teacher_id: teacherId,
+          file_name: file.originalname,
+          uploaded_at: FieldValue.serverTimestamp(),
+          due_date: new Date(dueDate),
+          status: "uploaded",
+          donationAmount: parseFloat(donationAmount), // Add donation amount
+        });
+
+        // Handle DocuSign envelopes
+        await createAllDocusignEnvelopes(docRef.id);
+
+        res.status(200).json({
+          success: true,
+          documentId: docRef.id,
+          fileUrl: publicUrl,
+          dueDate: dueDate,
+          donationAmount: parseFloat(donationAmount) || 0,
+        });
+      } catch (err) {
+        console.error("Error after upload:", err);
+        res.status(500).json({
+          error: "Failed to process file after upload",
+          details: err.message,
+        });
+      }
+    });
+
+    blobStream.end(file.buffer);
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({
+      error: "Failed to process file upload",
+      details: error.message,
+    });
+  }
 }
 
 async function deleteFile(req, res) {
@@ -295,7 +298,7 @@ async function deleteFile(req, res) {
       details: error.message,
     });
   }
-};
+}
 
 async function getUserInfo(accessToken) {
   const userInfoUrl = "https://account-d.docusign.com/oauth/userinfo";
@@ -342,7 +345,7 @@ async function getDocusignToken(code) {
   );
 
   return tokenResponse.data;
-};
+}
 
 async function refreshDocusignToken(refresh_token) {
   try {
@@ -370,14 +373,14 @@ async function refreshDocusignToken(refresh_token) {
     );
     throw new Error("Failed to refresh DocuSign token");
   }
-};
+}
 
 async function getTeacherData(teacher_id) {
   const teacher_document = await db
     .collection("teachers")
     .doc(teacher_id)
     .get();
-    
+
   if (!teacher_document.exists) {
     throw { status: 404, message: "Teacher not found" };
   }
@@ -397,8 +400,7 @@ async function getTeacherData(teacher_id) {
     await db.collection("teachers").doc(teacher_id).update({
       docusign_baseUri: accountInfo.baseUri,
       docusign_account_id: accountInfo.accountId,
-    })
-
+    });
   } catch (error) {
     if (error.status === 401) {
       if (!teacher_data.docusign_refresh_token) {
@@ -436,7 +438,7 @@ async function getTeacherData(teacher_id) {
 async function getFileBase64(filePath) {
   try {
     const [buffer] = await bucket.file(filePath).download();
-    console.log("Succesfully downloaded file", filePath)
+    console.log("Succesfully downloaded file", filePath);
     return buffer.toString("base64");
   } catch (error) {
     console.error("Error fetching file:", error);
@@ -452,8 +454,8 @@ async function createAllDocusignEnvelopes(document_id) {
 
   const firestore_data = firestore_document.data();
 
-  const path = getPathFromFirebaseStorageUrl(firestore_data.file_url)
-  const documentBase64 = await getFileBase64(path)
+  const path = getPathFromFirebaseStorageUrl(firestore_data.file_url);
+  const documentBase64 = await getFileBase64(path);
 
   const course_id = firestore_data.course_id;
   const teacher_id = firestore_data.teacher_id;
@@ -461,7 +463,7 @@ async function createAllDocusignEnvelopes(document_id) {
 
   //Requires teacher authentication to create the embedded signing, uses saved teacher token in FireStore
   const teacher_data = await getTeacherData(teacher_id);
-  
+
   const courses = teacher_data.courses;
   const course = courses.find((course) => course.id === course_id);
   const students = course.students;
@@ -484,7 +486,7 @@ async function createAllDocusignEnvelopes(document_id) {
       const querySnapshot = await db
         .collection("users")
         .where("name", "==", student)
-        .where("type", "==", "student")        
+        .where("type", "==", "student")
         .get();
 
       if (querySnapshot.empty) {
@@ -542,15 +544,18 @@ async function createDocusignEnvelope(
   donationAmount
 ) {
   // Convert donation amount to cents and validate minimum amount
-  const MINIMUM_PAYMENT_AMOUNT = 0.50;
+  const MINIMUM_PAYMENT_AMOUNT = 0.5;
   if (donationAmount > 0 && donationAmount < MINIMUM_PAYMENT_AMOUNT) {
-    throw new Error(`Payment amount must be at least $${MINIMUM_PAYMENT_AMOUNT}`);
+    throw new Error(
+      `Payment amount must be at least $${MINIMUM_PAYMENT_AMOUNT}`
+    );
   }
   const donationAmountCents = Math.round(donationAmount * 100);
 
   // Create envelope definition
   const envelopeDefinition = new docusign.EnvelopeDefinition();
-  envelopeDefinition.emailSubject = "Please sign this permission slip and process optional donation";
+  envelopeDefinition.emailSubject =
+    "Please sign this permission slip and process optional donation";
 
   // Add the document
   const document = new docusign.Document();
@@ -562,58 +567,58 @@ async function createDocusignEnvelope(
 
   // Create signature tabs for both signers
   const parentSignHere = docusign.SignHere.constructFromObject({
-    anchorString: "/parent_sig/",  // Make sure this anchor exists in your PDF
+    anchorString: "/parent_sig/", // Make sure this anchor exists in your PDF
     anchorYOffset: "100",
     anchorUnits: "pixels",
-    anchorXOffset: "20"
+    anchorXOffset: "20",
   });
 
   const studentSignHere = docusign.SignHere.constructFromObject({
-    anchorString: "/student_sig/",  // Make sure this anchor exists in your PDF
+    anchorString: "/student_sig/", // Make sure this anchor exists in your PDF
     anchorYOffset: "10",
     anchorUnits: "pixels",
-    anchorXOffset: "20"
+    anchorXOffset: "20",
   });
 
   // Create date signed tabs
   const parentDateSigned = docusign.DateSigned.constructFromObject({
-    anchorString: "/parent_date/",  // Make sure this anchor exists in your PDF
+    anchorString: "/parent_date/", // Make sure this anchor exists in your PDF
     anchorYOffset: "0",
     anchorUnits: "pixels",
-    anchorXOffset: "0"
+    anchorXOffset: "0",
   });
 
   const studentDateSigned = docusign.DateSigned.constructFromObject({
-    anchorString: "/student_date/",  // Make sure this anchor exists in your PDF
+    anchorString: "/student_date/", // Make sure this anchor exists in your PDF
     anchorYOffset: "0",
     anchorUnits: "pixels",
-    anchorXOffset: "0"
+    anchorXOffset: "0",
   });
 
   // Setup payment if donation amount is greater than 0
   let parentTabs = {
     signHereTabs: [parentSignHere],
-    dateSignedTabs: [parentDateSigned]
+    dateSignedTabs: [parentDateSigned],
   };
 
   if (donationAmount > 0) {
     // Create donation amount formula tab
     const donationFormula = docusign.FormulaTab.constructFromObject({
       tabLabel: "donation_amount",
-      formula: donationAmountCents.toString(),
+      formula: donationAmount,
       roundDecimalPlaces: "0",
       hidden: "true",
       required: "true",
       locked: "true",
       documentId: "1",
-      pageNumber: "1"
+      pageNumber: "1",
     });
 
     // Create payment line item
     const donationLineItem = docusign.PaymentLineItem.constructFromObject({
       name: "School Activity Donation",
       description: "Optional donation to support school activities",
-      amountReference: "donation_amount"
+      amountReference: "donation_amount",
     });
 
     // Create payment details
@@ -622,7 +627,7 @@ async function createDocusignEnvelope(
       currencyCode: "USD",
       gatewayName: "Stripe",
       gatewayDisplayName: "Stripe",
-      lineItems: [donationLineItem]
+      lineItems: [donationLineItem],
     });
 
     // Create payment formula tab
@@ -637,21 +642,23 @@ async function createDocusignEnvelope(
       documentId: "1",
       pageNumber: "1",
       xPosition: "0",
-      yPosition: "0"
+      yPosition: "0",
     });
 
-    // Add formula tabs to parent's tabs
-    parentTabs.formulaTabs = [parentSignHere, donationFormula, paymentFormulaTab];
+    // Add formula tabs and payment tabs while preserving signHereTabs
+    parentTabs.formulaTabs = [donationFormula, paymentFormulaTab];
   }
+  parentTabs.signHereTabs = [parentSignHere];
+  parentTabs.dateSignedTabs = [parentDateSigned];
 
   // Create parent signer
   const parentSigner = docusign.Signer.constructFromObject({
     email: parentEmail,
     name: parentName,
     recipientId: "2",
-    routingOrder: "2",  // Parent signs second
+    routingOrder: "2", // Parent signs second
     clientUserId: CONFIG.clientUserId,
-    tabs: parentTabs
+    tabs: parentTabs,
   });
 
   // Create student signer
@@ -659,12 +666,12 @@ async function createDocusignEnvelope(
     email: studentEmail,
     name: studentName,
     recipientId: "1",
-    routingOrder: "1",  // Student signs first
+    routingOrder: "1", // Student signs first
     clientUserId: CONFIG.clientUserId,
     tabs: {
       signHereTabs: [studentSignHere],
-      dateSignedTabs: [studentDateSigned]
-    }
+      dateSignedTabs: [studentDateSigned],
+    },
   });
 
   // Add recipients to envelope
@@ -676,10 +683,10 @@ async function createDocusignEnvelope(
 
   // Create envelope
   const results = await envelopesApi.createEnvelope(accountId, {
-    envelopeDefinition: envelopeDefinition
+    envelopeDefinition: envelopeDefinition,
   });
 
-  console.log("LETS FUCKING GO IT WORKED!!")
+  console.log("LETS FUCKING GO IT WORKED!!");
 
   return results.envelopeId;
 }
@@ -734,6 +741,5 @@ module.exports = {
   uploadFile,
   deleteFile,
   getCanvasCourses,
-  paymentWebhook
+  paymentWebhook,
 };
-

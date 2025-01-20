@@ -9,7 +9,7 @@ const { CONFIG, backendURL } = require("./config");
 const teacherService = require("./teacherService");
 const studentService = require("./studentService");
 const twilioService = require("./twilioService");
-const parentService = require("./parentService")
+const parentService = require("./parentService");
 
 const app = express();
 
@@ -46,12 +46,14 @@ app.get("/api/getFamilyMembers", studentService.getFamilyMembers);
 app.post("/api/uploadPFP", upload.single("file"), studentService.uploadPFP);
 
 //Parent-related routes
-app.post("/api/addChild", parentService.addChild)
-app.delete("/api/removeChild", parentService.removeChild)
+app.post("/api/addChild", parentService.addChild);
+app.delete("/api/removeChild", parentService.removeChild);
 
 // Twilio routes
-app.post("/api/trigger-reminder-calls/:documentId", twilioService.remindParents);
-
+app.post(
+  "/api/trigger-reminder-calls/:documentId",
+  twilioService.remindParents
+);
 
 // Start server
 app.listen(CONFIG.PORT, () => {
