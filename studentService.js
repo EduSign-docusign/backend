@@ -4,7 +4,7 @@ const docusign = require("docusign-esign");
 const path = require("path");
 const fs = require("fs");
 const pdf = require('pdf-parse');
-const { getPathFromFirebaseStorageUrl } = require("./utils");
+const { getPathFromFirebaseStorageUrl, extractToken, verifyToken } = require("./utils");
 
 const { CONFIG, backendURL, openai } = require("./config");
 
@@ -26,6 +26,35 @@ function makeViewRequest(email, name, type, envelope_id, document_id) {
   viewRequest.clientUserId = CONFIG.clientUserId;
 
   return viewRequest;
+}
+
+async function setExpoPushToken(req, res) {
+  const { expoPushToken } = req.body;
+  const token = extractToken(req, res)
+  const user_id = await verifyToken(token)
+
+  if (!user_id) {
+    res.status(404).json({ success: false, status: 404, message: "User not found"})
+  }
+
+  if (!expoPushToken) {
+    res.status(404).json({ success: false, status: 404, message: "No expoPushToken provided"})
+  }
+
+  try {
+    console.log("Updating", user_id, expoPushToken, req.body)
+    await db.collection("users").doc(user_id).update({
+      expoPushToken: expoPushToken
+    })
+
+    res.json({ success: true })
+  } catch(error) {
+    console.error(JSON.stringify(error));
+    res.status(error.status || 500).json({
+      error: error.message || "Failed to set Expo Push Token",
+      status: error.status || 500,
+    });
+  }
 }
 
 async function getSigningURL(req, res) {
@@ -164,7 +193,7 @@ async function extractTextFromPDF(pdfPath) {
 async function summarizeText(text) {
     const messages = [
         { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: `Summarize the following permission slip into concise bullet points for a parent or student to sign:\n\n"${text}"` },
+        { role: "user", content: `Summarize the following permission slip into up to 5 concise bullet points for a curious parent:\n\n"${text}"` },
     ];
 
     const response = await openai.chat.completions.create({
@@ -236,22 +265,18 @@ async function getFamilyMembers(req, res) {
       const parentDoc = await db.collection("users").doc(userData.parentID).get();
       const { children: parentsChildren, ...parentData } = parentDoc.data();
 
-      children = parentsChildren
+      children = parentsChildren || []
 
       members.push(parentData);
 
     } else if (userData.type === "parent") {
       children = userData.children
-
-      const pendingChildren = children.filter(
-        (child) =>
-          child.invite_pending === true
-      );
+      const pendingChildren = userData.pending_children || []
 
       for (const child of pendingChildren) {
         const childDoc = await db.collection("users").doc(child.id).get();
         if (childDoc.exists) {
-          requests.push(childDoc.data());
+          requests.push({...childDoc.data(), id: child.id});
         }
       }
   
@@ -259,10 +284,7 @@ async function getFamilyMembers(req, res) {
       throw new Error("Type is not student or parent.")
     }
 
-    const filteredChildren = children.filter(
-      (child) =>
-        child.name !== userData.name && child.invite_pending === false
-    );
+    const filteredChildren = children.filter((child) => child.name !== userData.name);
 
     for (const child of filteredChildren) {
       const childDoc = await db.collection("users").doc(child.id).get();
@@ -300,7 +322,6 @@ async function getDocuments(req, res) {
     studentNames = [userData.name]
   } else if (userData.type == "parent") {
     studentNames = userData.children
-    .filter(child => !child.invite_pending)
     .map(child => child.name);      
   } else {
     return []
@@ -414,5 +435,6 @@ module.exports = {
     getDocuments,
     getUser,
     uploadPFP,
-    getFamilyMembers
+    getFamilyMembers,
+    setExpoPushToken
 }

@@ -266,144 +266,135 @@ document.addEventListener("DOMContentLoaded", function () {
           const documents = await fetchCourseDocuments(course.id);
 
           // Update the status icons part in loadCourses function
-          const documentsHtml = documents
-            .map((doc) => {
-              const documentStatusHtml = `
-  <div class="document-status">
-    <div class="document-info">
-      <span class="document-name">${doc.file_name}</span>
-      <span class="document-due-date">Due: ${new Date(
-        doc.due_date?.toDate()
-      ).toLocaleDateString()}</span>
-    </div>
-    <div class="signing-status">
-      ${
-        doc.docusign_envelopes
-          ?.map(
-            (envelope) => `
-        <div class="student-signing-status">
-          <span class="student-name">${envelope.name}</span>
-          <div class="status-icons">
-            <div class="status-icon" title="Student signature">
-              ${
-                envelope.studentHasSigned
-                  ? `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-                   </svg>`
-                  : `<svg class="cross" viewBox="0 0 24 24" width="16" height="16">
-                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                   </svg>`
-              }
-              <span>Student</span>
-            </div>
-            <div class="status-icon" title="Parent signature">
-              ${
-                envelope.parentHasSigned
-                  ? `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-                   </svg>`
-                  : `<svg class="cross" viewBox="0 0 24 24" width="16" height="16">
-                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                   </svg>`
-              }
-              <span>Parent</span>
-            </div>
-            ${
-              doc.donationAmount > 0
-                ? `
-              <div class="status-icon" title="Donation Status">
-                <span class="amount">$${doc.donationAmount}</span>
+          const documentsHtml = documents.map((doc) => {
+            const totalStudents = doc.docusign_envelopes?.length || 0;
+            const totalPayments = doc.docusign_envelopes?.reduce((acc, envelope) => {
+              return envelope.hasDonated ? acc + 1 : acc;
+            }, 0);
+          
+            const paymentPercentage = (totalPayments / totalStudents) * 100;
+          
+            const documentStatusHtml = `
+              <div class="document-status">
+                <div class="document-info">
+                  <span class="document-name">${doc.file_name}</span>
+                  <span class="document-due-date">Due: ${new Date(
+                    doc.due_date?.toDate()
+                  ).toLocaleDateString()}</span>
+                </div>
                 ${
-                  envelope.hasDonated
-                    ? `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-                     </svg>`
-                    : `<svg class="cross" viewBox="0 0 24 24" width="16" height="16">
-                      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                     </svg>`
+                  doc.donationAmount > 0
+                    ? `
+                    <div class="payment-progress">
+                      <span>${totalPayments} / ${totalStudents} students paid</span>
+                      <div class="progress-bar">
+                        <div class="progress" style="width: ${paymentPercentage}%"></div>
+                      </div>
+                    </div>
+                    `
+                    : ""
                 }
+                <div class="signing-status">
+                  ${
+                    doc.docusign_envelopes
+                      ?.map((envelope) => {
+                        return `
+                          <div class="student-signing-status">
+                            <span class="student-name">${envelope.name}</span>
+                            <div class="status-icons">
+                              <div class="status-icon" title="Student signature">
+                                ${
+                                  envelope.studentHasSigned
+                                    ? `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`
+                                    : `<svg class="cross" viewBox="0 0 24 24" width="16" height="16"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`
+                                }
+                                <span>Student</span>
+                              </div>
+                              <div class="status-icon" title="Parent signature">
+                                ${
+                                  envelope.parentHasSigned
+                                    ? `<svg class="checkmark" viewBox="0 0 24 24" width="16" height="16"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`
+                                    : `<svg class="cross" viewBox="0 0 24 24" width="16" height="16"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`
+                                }
+                                <span>Parent</span>
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join("") || ""
+                  }
+                </div>
               </div>
-            `
-                : ""
-            }
-          </div>
-        </div>
-      `
-          )
-          .join("") || ""
-      }
-    </div>
-  </div>
-`;
+            `;
+          
+            return `
+              <div class="document-card">
+                ${documentStatusHtml}
+              </div>
+            `;
+            }).join("");
 
-              return `
-    <div class="document-card">
-      ${documentStatusHtml}
-    </div>
-  `;
-            })
-            .join("");
+            return `
+              <div class="course-card">
+                <h4>${course.name}</h4>
+                <div class="course-info">
+                  <span class="student-count">${
+                    course.students?.length || 0
+                  } students</span>
+                </div>
 
-          return `
-  <div class="course-card">
-    <h4>${course.name}</h4>
-    <div class="course-info">
-      <span class="student-count">${
-        course.students?.length || 0
-      } students</span>
-    </div>
+                <div class="documents-section">
+                  <h5>Documents</h5>
+                  ${documentsHtml}
+                </div>
 
-    <div class="documents-section">
-      <h5>Documents</h5>
-      ${documentsHtml}
-    </div>
-
-    <div class="file-upload">
-      <div class="upload-form">
-        <input 
-          type="file" 
-          id="file-${course.id}" 
-          class="hidden"
-          accept=".pdf,.doc,.docx"
-          onchange="handleFileSelect(event, '${course.id}', '${course.name}')"
-        >
-        <div class="date-input">
-          <label for="due-date-${course.id}">Due Date:</label>
-          <input 
-            type="date" 
-            id="due-date-${course.id}"
-            min="${new Date().toISOString().split("T")[0]}"
-            required
-          >
-        </div>
-        <!-- Add donation input -->
-        <div class="donation-input">
-          <label for="donation-${course.id}">Optional Donation Amount:</label>
-          <div class="donation-field">
-            <span class="currency-symbol">$</span>
-            <input 
-              type="number" 
-              id="donation-${course.id}"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-            >
-          </div>
-          <small class="donation-help">Leave empty or set to 0 for no donation</small>
-        </div>
-        <label 
-          for="file-${course.id}" 
-          class="file-upload-button"
-          onclick="handleUploadClick('${course.id}')"
-        >
-          Upload Permission Slip
-        </label>
-      </div>
-    </div>
-  </div>
-`;
-        })
-      );
+                <div class="file-upload">
+                  <div class="upload-form">
+                    <input 
+                      type="file" 
+                      id="file-${course.id}" 
+                      class="hidden"
+                      accept=".pdf,.doc,.docx"
+                      onchange="handleFileSelect(event, '${course.id}', '${course.name}')"
+                    >
+                    <div class="date-input">
+                      <label for="due-date-${course.id}">Due Date:</label>
+                      <input 
+                        type="date" 
+                        id="due-date-${course.id}"
+                        min="${new Date().toISOString().split("T")[0]}"
+                        required
+                      >
+                    </div>
+                    <!-- Add donation input -->
+                    <div class="donation-input">
+                      <label for="donation-${course.id}">Payment Amount:</label>
+                      <div class="donation-field">
+                        <span class="currency-symbol">$</span>
+                        <input 
+                          type="number" 
+                          id="donation-${course.id}"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                        >
+                      </div>
+                      <small class="donation-help">Leave empty or set to 0 for no required payment</small>
+                    </div>
+                    <label 
+                      for="file-${course.id}" 
+                      class="file-upload-button"
+                      onclick="handleUploadClick('${course.id}')"
+                    >
+                      Upload Permission Slip
+                    </label>
+                  </div>
+                </div>
+              </div>
+            `;
+          })
+        );
 
       coursesList.innerHTML = coursesHtml.join("");
       window.appAnimations?.animateCourseCards?.();

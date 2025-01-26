@@ -44,16 +44,16 @@ app.get("/api/getDocuments", studentService.getDocuments);
 app.get("/api/getUser", studentService.getUser);
 app.get("/api/getFamilyMembers", studentService.getFamilyMembers);
 app.post("/api/uploadPFP", upload.single("file"), studentService.uploadPFP);
+app.post("/api/setExpoPushToken", studentService.setExpoPushToken);
 
 //Parent-related routes
 app.post("/api/addChild", parentService.addChild);
 app.delete("/api/removeChild", parentService.removeChild);
 
 // Twilio routes
-app.post(
-  "/api/trigger-reminder-calls/:documentId",
-  twilioService.remindParents
-);
+app.post("/api/trigger-reminder-calls", twilioService.callParents);
+app.post("/api/remindStudentOrParent", twilioService.remindStudentOrParent)
+app.post("/api/remindAllParents", twilioService.remindAllParents)
 
 // Start server
 app.listen(CONFIG.PORT, () => {

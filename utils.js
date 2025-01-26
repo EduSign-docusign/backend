@@ -46,12 +46,49 @@ async function verifyToken(token) {
       // }
     })
     .catch((error) => {
-      throw new UnauthorizedError("Unauthorized - Error decoding token")
+      throw new Error("Unauthorized - Error decoding token")
     })
+}
+
+async function sendPushNotification(notification) {
+    if (notification.expoPushToken == null) {
+      return
+    }
+    
+    const apiUrl = 'https://exp.host/--/api/v2/push/send';
+
+    console.log("Expo Notification ID: ", notification.expoPushToken);
+    
+    const expoNotification = {
+        to: notification.expoPushToken,
+        title: notification.title,
+        body: notification.body,
+    };
+      
+    
+    try {
+        console.log("Sending Expo Push Notification")
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+            'Content-Type': 'application/json',
+            },
+            body: JSON.stringify([expoNotification]),
+        });
+    
+        if (!response.ok) {
+            throw new Error('Failed to send push notification');
+        }
+    
+    } catch (error) {
+        console.error('Error sending push notification:', error.message);
+    }
 }
 
 module.exports = {
   verifyToken,
   extractToken,
-  getPathFromFirebaseStorageUrl
+  getPathFromFirebaseStorageUrl,
+  sendPushNotification
 };
+
