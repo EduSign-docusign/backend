@@ -45,6 +45,10 @@ async function saveTeacherDocusignToken(req, res) {
   res.redirect(backendURL);
 }
 
+async function docusignLogout(req, res) {
+  res.redirect("https://account-d.docusign.com/logout ")
+}
+
 async function getCanvasCourses(req, res) {
   const token = req.headers.authorization;
 
@@ -742,4 +746,5 @@ module.exports = {
   deleteFile,
   getCanvasCourses,
   paymentWebhook,
+  docusignLogout
 };

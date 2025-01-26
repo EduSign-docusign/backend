@@ -29,6 +29,7 @@ app.get("/", (req, res) => {
 
 // Teacher-related routes
 app.get("/api/teacher-auth", teacherService.authorizeTeacher);
+app.get("/api/docusignLogout", teacherService.docusignLogout);
 app.get("/api/save-teacher-token", teacherService.saveTeacherDocusignToken);
 app.post("/api/upload", upload.single("file"), teacherService.uploadFile);
 app.delete("/api/files/:fileId", teacherService.deleteFile);

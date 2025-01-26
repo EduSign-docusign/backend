@@ -278,15 +278,23 @@ document.addEventListener("DOMContentLoaded", function () {
               <div class="document-status">
                 <div class="document-info">
                   <span class="document-name">${doc.file_name}</span>
-                  <span class="document-due-date">Due: ${new Date(
-                    doc.due_date?.toDate()
-                  ).toLocaleDateString()}</span>
+                  <span class="document-bell">
+                     <button class="reminder-button" title="Send Reminders" id="reminderButton">
+                      <svg viewBox="0 0 24 24" width="16" height="16" class="bell-icon">
+                        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6.36-6c.22-.72.64-1.61.64-3V9c0-3.07-1.64-5.64-4.5-6.32V2c0-.83-.67-1.5-1.5-1.5S11.5 1.17 11.5 2v.68C8.64 3.36 7 5.92 7 9v4c0 1.39.43 2.28.64 3L5 18v1h14v-1l-2.64-2z"/>
+                      </svg>
+                    </button>
+                  </span>
+                  <span class="document-due-date">
+                    Due: ${new Date(doc.due_date?.toDate()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                  
                 </div>
                 ${
                   doc.donationAmount > 0
                     ? `
                     <div class="payment-progress">
-                      <span>${totalPayments} / ${totalStudents} students paid</span>
+                      <span>${totalPayments} / ${totalStudents} students paid ($${totalPayments * doc.donationAmount} Raised)</span>
                       <div class="progress-bar">
                         <div class="progress" style="width: ${paymentPercentage}%"></div>
                       </div>
@@ -327,7 +335,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>
               </div>
             `;
-          
+                  
+
             return `
               <div class="document-card">
                 ${documentStatusHtml}
@@ -398,6 +407,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
       coursesList.innerHTML = coursesHtml.join("");
       window.appAnimations?.animateCourseCards?.();
+
+      const reminderBtn = document.getElementById("reminderButton")
+
+      reminderBtn.addEventListener("click", async () => {
+        // const response = await fetch(`/api/callParents?document_id=${doc.id}`, {
+        //   method: "POST",
+        // });
+  
+        // if (!response.ok) {
+        //   throw new Error("Calls failed");
+        // }
+  
+        // const result = await response.json();
+        // console.log("Calls successful:", result);
+  
+        window.appAnimations?.showNotification?.(
+          "Sent Reminders To Parents",
+        );
+      });
+
+
     } catch (error) {
       console.error("Detailed error:", error);
       window.appAnimations?.showNotification?.(
@@ -535,7 +565,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const modal = document.getElementById("uploadConfirmModal");
     const confirmBtn = document.getElementById("confirmUpload");
     const cancelBtn = document.getElementById("cancelUpload");
-
     // Confirm button handler
     confirmBtn.addEventListener("click", async () => {
       await processUpload();
@@ -545,6 +574,7 @@ document.addEventListener("DOMContentLoaded", function () {
         window.location.href = `/api/teacher-auth?teacher_id=${auth.currentUser.uid}`;
       }
     });
+    
 
     // Cancel button handler
     cancelBtn.addEventListener("click", () => {
