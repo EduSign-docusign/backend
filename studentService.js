@@ -307,8 +307,13 @@ async function getFamilyMembers(req, res) {
 
 
 async function getDocuments(req, res) {
-  const { user_id } = req.query;
+  const token = extractToken(req, res)
+  const user_id = await verifyToken(token)
 
+  if (!user_id) {
+    res.status(404).json({ success: false, message: "User not found"})
+  }
+  
   const userDoc = await db.collection("users").doc(user_id).get()
   const userData = userDoc.data()
 
@@ -357,7 +362,12 @@ async function getDocuments(req, res) {
 }
 
 async function getUser(req, res) {
-  const { user_id } = req.query;
+  const token = extractToken(req, res)
+  const user_id = await verifyToken(token)
+
+  if (!user_id) {
+    res.status(404).json({ success: false, message: "User not found"})
+  }
 
   const userDoc = await db.collection("users").doc(user_id).get()
   const userData = userDoc.data();
