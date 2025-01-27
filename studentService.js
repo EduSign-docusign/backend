@@ -30,18 +30,21 @@ function makeViewRequest(email, name, type, envelope_id, document_id) {
 
 async function setExpoPushToken(req, res) {
   const { expoPushToken } = req.body;
-  const token = extractToken(req, res)
-  const user_id = await verifyToken(token)
-
-  if (!user_id) {
-    res.status(404).json({ success: false, status: 404, message: "User not found"})
-  }
-
-  if (!expoPushToken) {
-    res.status(404).json({ success: false, status: 404, message: "No expoPushToken provided"})
-  }
 
   try {
+    const token = extractToken(req, res)
+    const user_id = await verifyToken(token)
+  
+    if (!user_id) {
+      console.error("User not found", user_id)
+      return res.status(404).json({ success: false, status: 404, message: "User not found"})
+    }
+  
+    if (!expoPushToken) {
+      console.error("Push token not found", expoPushToken)
+      return res.status(404).json({ success: false, status: 404, message: "No expoPushToken provided"})
+    }
+  
     console.log("Updating", user_id, expoPushToken, req.body)
     await db.collection("users").doc(user_id).update({
       expoPushToken: expoPushToken
@@ -247,7 +250,12 @@ function getStatusOfEnvelope(envelope) {
 
 async function getFamilyMembers(req, res) {
   try {
-    const { user_id } = req.query;
+    const token = extractToken(req, res)
+    const user_id = await verifyToken(token)
+
+    if (!user_id) {
+      return res.status(404).json({ success: false, message: "User not found"})
+    }
 
     // Fetch the user document
     const userDoc = await db.collection("users").doc(user_id).get();
@@ -307,72 +315,89 @@ async function getFamilyMembers(req, res) {
 
 
 async function getDocuments(req, res) {
-  const token = extractToken(req, res)
-  const user_id = await verifyToken(token)
-
-  if (!user_id) {
-    res.status(404).json({ success: false, message: "User not found"})
-  }
-  
-  const userDoc = await db.collection("users").doc(user_id).get()
-  const userData = userDoc.data()
-
-  if (!userData) res.json({ documents: [] })
-
-  const querySnapshot = await db.collection("documents").get()
-  const result = {};
-
-  
-  if (userData.type == "student") {
-    studentNames = [userData.name]
-  } else if (userData.type == "parent") {
-    studentNames = userData.children
-    .map(child => child.name);      
-  } else {
-    return []
-  }
-
-  console.log("Fetching Student Names", studentNames)
-      
-  querySnapshot.forEach((doc) => {
-      //extracting status because we dont want it
-      const { status, docusign_envelopes, ...data } = doc.data();
-      const course = data.course_name;
-
-      const envelopes = docusign_envelopes || [];
-      for (const envelope of envelopes) {
-        if (studentNames.includes(envelope.name)) {
-          if (!result[course]) {
-            result[course] = [];
-          }
-          
-          result[course].push({ 
-            id: doc.id,
-            status: getStatusOfEnvelope(envelope),
-            ...envelope,
-            ...data 
-          });
-        }
+  try {
+      const token = extractToken(req, res)
+      const user_id = await verifyToken(token)
+    
+      if (!user_id) {
+        console.error("User not found", user_id)
+        return res.status(404).json({ success: false, message: "User not found"})
       }
-  });
-
-  res.json({ 
-    documents: Object.entries(result).map(([course, data]) => ({ title: course, data, }))
-  });
+    
+      const userDoc = await db.collection("users").doc(user_id).get()
+      const userData = userDoc.data()
+    
+      if (!userData) res.json({ documents: [] })
+    
+      const querySnapshot = await db.collection("documents").get()
+      const result = {};
+    
+      
+      if (userData.type == "student") {
+        studentNames = [userData.name]
+      } else if (userData.type == "parent") {
+        studentNames = userData.children
+        .map(child => child.name);      
+      } else {
+        return []
+      }
+    
+      console.log("Fetching Student Names", studentNames)
+          
+      querySnapshot.forEach((doc) => {
+          //extracting status because we dont want it
+          const { status, docusign_envelopes, ...data } = doc.data();
+          const course = data.course_name;
+    
+          const envelopes = docusign_envelopes || [];
+          for (const envelope of envelopes) {
+            if (studentNames.includes(envelope.name)) {
+              if (!result[course]) {
+                result[course] = [];
+              }
+              
+              result[course].push({ 
+                id: doc.id,
+                status: getStatusOfEnvelope(envelope),
+                ...envelope,
+                ...data 
+              });
+            }
+          }
+      });
+    
+      res.json({ 
+        documents: Object.entries(result).map(([course, data]) => ({ title: course, data, }))
+      });
+  } catch(error) {
+    res.status(error.status || 500).json({
+      error: error.message || "Failed to get documents",
+      status: error.status || 500,
+    });  
+  }
+  
 }
 
 async function getUser(req, res) {
-  const token = extractToken(req, res)
-  const user_id = await verifyToken(token)
-
-  if (!user_id) {
-    res.status(404).json({ success: false, message: "User not found"})
+  try {
+    const token = extractToken(req, res)
+    const user_id = await verifyToken(token)
+  
+    if (!user_id) {
+      console.error("User not found", user_id)
+      return res.status(404).json({ success: false, message: "User not found"})
+    }
+  
+    const userDoc = await db.collection("users").doc(user_id).get()
+    const userData = userDoc.data();
+  
+    res.json({ user: userData })
+  } catch(error) {
+    res.status(error.status || 500).json({
+      error: error.message || "Failed to get user",
+      status: error.status || 500,
+    });  
   }
-
-  const userDoc = await db.collection("users").doc(user_id).get()
-  const userData = userDoc.data();
-
-  res.json({ user: userData })
 }
 
 async function uploadPFP(req, res) {
@@ -400,7 +425,7 @@ async function uploadPFP(req, res) {
   
       blobStream.on("error", (err) => {
         console.error("Upload error:", err);
-        res.status(500).json({ error: "Failed to upload file", details: err.message });
+        return res.status(500).json({ error: "Failed to upload file", details: err.message });
       });
   
       blobStream.on("finish", async () => {
